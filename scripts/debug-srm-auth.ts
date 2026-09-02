@@ -1,11 +1,11 @@
 /**
  * SRM Authentication Diagnostic Script
- * 
+ *
  * LOCAL DEVELOPMENT ONLY
- * 
+ *
  * Usage:
  *   SRM_TEST_NETID=your_netid SRM_TEST_PASSWORD=your_password npx tsx scripts/debug-srm-auth.ts
- * 
+ *
  * This script tests the SRM authentication flow and reports safe diagnostic information.
  * It does NOT log passwords, session cookies, or personal data.
  */
@@ -13,18 +13,27 @@
 import { SRMLoginService } from "../src/server/srm/login-service";
 import { AcademiaClient } from "../src/server/srm/academia-client";
 import { SRM_CONFIG } from "../src/server/srm/academia-config";
+import { decodeAcademiaPage } from "../src/server/srm/decode-academia-page";
 import { parseStudentProfile } from "../src/server/srm/parsers/profile-parser";
 
 const NETID = process.env.SRM_TEST_NETID;
 const PASSWORD = process.env.SRM_TEST_PASSWORD;
 
+function pad(label: string, width = 30): string {
+  return label.padEnd(width, ".");
+}
+
 async function main() {
   console.log("=== SRM Authentication Diagnostic ===\n");
 
   if (!NETID || !PASSWORD) {
-    console.error("Error: SRM_TEST_NETID and SRM_TEST_PASSWORD environment variables required.");
+    console.error(
+      "Error: SRM_TEST_NETID and SRM_TEST_PASSWORD environment variables required."
+    );
     console.error("\nUsage:");
-    console.error("  SRM_TEST_NETID=your_netid SRM_TEST_PASSWORD=your_password npx tsx scripts/debug-srm-auth.ts");
+    console.error(
+      "  SRM_TEST_NETID=your_netid SRM_TEST_PASSWORD=your_password npx tsx scripts/debug-srm-auth.ts"
+    );
     process.exit(1);
   }
 
@@ -32,76 +41,148 @@ async function main() {
   console.log(`Password: ***`);
   console.log("");
 
-  // Step 1: Test login endpoint
-  console.log("Step 1: Testing SRM login endpoint...");
+  const overallStart = Date.now();
+
+  // Step 1: Login
+  console.log("--- Authentication ---");
+  const loginStart = Date.now();
   const loginService = new SRMLoginService();
 
+  let loginResult;
   try {
-    const loginResult = await loginService.login(NETID, PASSWORD);
+    loginResult = await loginService.login(NETID, PASSWORD);
+  } catch (err) {
+    console.log(`${pad("SIGNIN POST")} ERROR — ${err instanceof Error ? err.message : "unknown"}`);
+    console.log("\n=== Diagnostic Complete ===");
+    return;
+  }
+  const loginDuration = Date.now() - loginStart;
 
-    if (loginResult.success) {
-      console.log("  Status: SUCCESS");
-      console.log(`  JSESSIONID present: ${!!loginResult.cookies.JSESSIONID}`);
-      console.log(`  Total cookies: ${Object.keys(loginResult.cookies).length}`);
-    } else if (loginResult.requiresCaptcha) {
-      console.log("  Status: CAPTCHA_REQUIRED");
-      console.log(`  CAPTCHA digest present: ${!!loginResult.captchaDigest}`);
-      console.log(`  CAPTCHA image URL present: ${!!loginResult.captchaImage}`);
-    } else {
-      console.log("  Status: FAILED");
-      console.log(`  Error: ${loginResult.error}`);
-      console.log(`  HTTP Status: ${loginResult.status}`);
+  console.log(`${pad("SIGNIN POST")} ${loginResult.success ? "200" : loginResult.status || "ERR"} — ${loginDuration}ms`);
+  console.log(`${pad("Response type")} JSON`);
+
+  if (loginResult.requiresCaptcha) {
+    console.log(`${pad("CAPTCHA required")} yes`);
+    console.log(`${pad("CAPTCHA digest present")} ${!!loginResult.captchaDigest}`);
+    console.log(`\nAuthentication: CAPTCHA_REQUIRED`);
+    console.log("=== Diagnostic Complete ===");
+    return;
+  }
+
+  if (!loginResult.success) {
+    console.log(`${pad("CAPTCHA required")} no`);
+    console.log(`${pad("Error")} ${loginResult.error}`);
+    console.log(`\nAuthentication: FAILED`);
+    console.log("=== Diagnostic Complete ===");
+    return;
+  }
+
+  console.log(`${pad("CAPTCHA required")} no`);
+
+  const cookieNames = Object.keys(loginResult.cookies);
+  console.log(`${pad("Cookies established")} ${cookieNames.length} (${cookieNames.join(", ")})`);
+
+  // Print stage logs
+  const stageLogs = loginService.getStageLogs();
+  if (stageLogs.length > 0) {
+    console.log("\n--- Stage Timing ---");
+    for (const log of stageLogs) {
+      const parts = [pad(log.stage, 35), `${log.duration}ms`];
+      if (log.httpStatus) parts.push(`HTTP ${log.httpStatus}`);
+      if (log.error) parts.push(`ERR: ${log.error}`);
+      console.log(parts.join(" | "));
     }
-    console.log("");
+  }
 
-    if (!loginResult.success) {
-      console.log("=== Diagnostic Complete ===");
-      return;
-    }
+  // Step 2: Profile page fetch
+  console.log("\n--- Profile Fetch ---");
+  const profileStart = Date.now();
+  const client = new AcademiaClient();
+  client.setCookies(loginResult.cookies);
 
-    // Step 2: Test profile page fetch
-    console.log("Step 2: Fetching student profile page...");
-    const client = new AcademiaClient();
-    client.setCookies(loginResult.cookies);
-
-    const profileResponse = await client.get(SRM_CONFIG.coursePage, {
+  let profileResponse;
+  try {
+    profileResponse = await client.get(SRM_CONFIG.coursePage, {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
     });
+  } catch (err) {
+    console.log(`${pad("Profile fetch")} ERROR — ${err instanceof Error ? err.message : "unknown"}`);
+    console.log("\n=== Diagnostic Complete ===");
+    return;
+  }
+  const profileDuration = Date.now() - profileStart;
 
-    console.log(`  HTTP Status: ${profileResponse.status}`);
-    console.log(`  Response length: ${profileResponse.text.length} bytes`);
+  console.log(`${pad("Profile fetch")} ${profileResponse.status} — ${profileDuration}ms`);
+  console.log(`${pad("Response size")} ${profileResponse.text.length} bytes`);
 
-    if (profileResponse.status === 200) {
-      // Step 3: Parse profile
-      console.log("\nStep 3: Parsing student profile...");
-      const profile = parseStudentProfile(profileResponse.text);
+  if (profileResponse.status !== 200) {
+    console.log(`\nProfile: FAILED (HTTP ${profileResponse.status})`);
+    console.log("=== Diagnostic Complete ===");
+    return;
+  }
 
-      console.log(`  Name found: ${!!profile.name} ${profile.name ? `(${profile.name})` : ""}`);
-      console.log(`  Register number found: ${!!profile.regNumber} ${profile.regNumber ? `(${profile.regNumber})` : ""}`);
-      console.log(`  Program found: ${!!profile.program}`);
-      console.log(`  Department found: ${!!profile.department}`);
-      console.log(`  Semester found: ${profile.semester > 0} (${profile.semester})`);
-      console.log(`  Section found: ${!!profile.section}`);
+  // Step 3: Decode page
+  console.log("\n--- Page Decode ---");
+  const decodeStart = Date.now();
+  const decoded = decodeAcademiaPage(profileResponse.text);
+  const decodeDuration = Date.now() - decodeStart;
 
-      const hasIdentity = profile.name || profile.regNumber;
-      console.log(`\n  Profile parse: ${hasIdentity ? "SUCCESS" : "FAILED"}`);
-    } else {
-      console.log("  Could not fetch profile page");
-    }
+  console.log(`${pad("Sanitize payload")} ${decoded.decoded ? "found" : "not found"}`);
+  console.log(`${pad("Decode time")} ${decodeDuration}ms`);
 
-    // Step 4: Test attendance page
-    console.log("\nStep 4: Fetching attendance page...");
-    const attendanceResponse = await client.get(SRM_CONFIG.attendancePage, {
+  if (decoded.error) {
+    console.log(`${pad("Decode error")} ${decoded.error}`);
+    console.log(`\nProfile: FAILED (${decoded.error})`);
+    console.log("=== Diagnostic Complete ===");
+    return;
+  }
+
+  console.log(`${pad("Decoded HTML")} ${decoded.html.length} bytes`);
+
+  // Step 4: Parse profile
+  console.log("\n--- Profile Parse ---");
+  const parseStart = Date.now();
+  const profile = parseStudentProfile(decoded.html);
+  const parseDuration = Date.now() - parseStart;
+
+  console.log(`${pad("Parse time")} ${parseDuration}ms`);
+  console.log(`${pad("Name found")} ${!!profile.name} ${profile.name ? "(yes)" : "(no)"}`);
+  console.log(`${pad("Register parsed")} ${!!profile.regNumber} ${profile.regNumber ? "(yes)" : "(no)"}`);
+  console.log(`${pad("Program found")} ${!!profile.program}`);
+  console.log(`${pad("Department found")} ${!!profile.department}`);
+  console.log(`${pad("Semester found")} ${profile.semester > 0} (${profile.semester})`);
+  console.log(`${pad("Section found")} ${!!profile.section}`);
+
+  const hasIdentity = profile.name || profile.regNumber;
+  console.log(`\nProfile parse: ${hasIdentity ? "SUCCESS" : "FAILED"}`);
+
+  // Step 5: Attendance page (optional)
+  console.log("\n--- Attendance Page ---");
+  const attendanceStart = Date.now();
+  let attendanceResponse;
+  try {
+    attendanceResponse = await client.get(SRM_CONFIG.attendancePage, {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
     });
+  } catch (err) {
+    console.log(`${pad("Attendance fetch")} ERROR — ${err instanceof Error ? err.message : "unknown"}`);
+    console.log("\n=== Diagnostic Complete ===");
+    return;
+  }
+  const attendanceDuration = Date.now() - attendanceStart;
 
-    console.log(`  HTTP Status: ${attendanceResponse.status}`);
-    console.log(`  Response length: ${attendanceResponse.text.length} bytes`);
+  console.log(`${pad("Attendance fetch")} ${attendanceResponse.status} — ${attendanceDuration}ms`);
+  console.log(`${pad("Response size")} ${attendanceResponse.text.length} bytes`);
 
-  } catch (error) {
-    console.error("\nError during diagnostic:", error);
+  // Summary
+  const overallDuration = Date.now() - overallStart;
+  console.log("\n--- Summary ---");
+  console.log(`${pad("Total time")} ${overallDuration}ms`);
+  console.log(`\nAuthentication: ${loginResult.success ? "SUCCESS" : "FAILED"}`);
+  if (loginResult.success) {
+    console.log(`Profile: ${hasIdentity ? "SUCCESS" : "FAILED"}`);
   }
 
   console.log("\n=== Diagnostic Complete ===");

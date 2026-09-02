@@ -3,64 +3,105 @@
 ## CampusFlow SRM Integration Status Report
 
 **Date:** September 2, 2026
-**Version:** 0.1.0
+**Version:** 0.2.0
 
 ---
 
-## Integration Status: IN PROGRESS — HTTP Authentication Implemented
+## Integration Status: IN PROGRESS — Authentication Pipeline Fixed
 
-The SRM integration now has a working HTTP-based authentication system. The login flow
-posts credentials to SRM Academia's Zoho Creator-based authentication endpoint and
-establishes a session via cookies. Profile, attendance, marks, and course parsers have
-been built.
+The SRM integration has been restructured to properly handle OAuth redirects,
+concurrent sessions, CAPTCHA challenges, and page decoding. The authentication
+pipeline now follows best practices for server-side web scraping of SRM Academia.
 
 **Current status:**
-- Authentication: REAL — HTTP-based login to SRM Academia
-- Profile: REAL — Parses student name, register number, program, department, semester
-- Attendance: REAL — Parses attendance table with course codes and percentages
-- Marks: REAL — Parses marks section with test performances
-- Timetable: REAL — Parses course table with slots, faculty, rooms
-- Dashboard greeting: REAL — Shows actual student first name
+- Authentication: IMPLEMENTED — NOT VERIFIED
+- Profile parser: IMPLEMENTED — NOT VERIFIED
+- Attendance parser: IMPLEMENTED — NOT VERIFIED
+- Marks parser: IMPLEMENTED — NOT VERIFIED
+- Timetable parser: IMPLEMENTED — NOT VERIFIED
+- Dashboard greeting: IMPLEMENTED — NOT VERIFIED
 
-**Verification needed:**
+**What has been verified:**
+- Code compiles and builds without errors
+- TypeScript types are correct
+- All parsers are structurally complete
+
+**What needs verification:**
 - Testing with real student credentials against live SRM servers
 - CAPTCHA handling validation
 - Parser accuracy verification with actual portal responses
+- OAuth redirect chain completion
+- Session cookie establishment
+
+---
+
+## Changes in v0.2.0
+
+### Critical Fixes
+1. **Unbounded recursion fix**: Concurrent session retry now limited to 2 attempts
+2. **Manual redirect following**: OAuth redirects now preserve cookies across hops
+3. **Session verification**: Login succeeds only after verified authenticated page fetch
+4. **Stage-level diagnostics**: Every authentication stage is timed and logged
+5. **Deterministic timeouts**: Per-request (12s) and overall (30s) timeouts enforced
+6. **Page decoding**: `.sanitize()` hex-escaped responses are decoded before parsing
+7. **CAPTCHA state**: Server-side challenge storage, proxy for CAPTCHA images
+8. **Session manager**: Opaque browser cookies with server-side session store
+9. **AES-256-GCM**: Authenticated encryption instead of unauthenticated AES-CBC
+10. **Frontend timeout**: AbortController with 35s timeout prevents infinite spinner
+
+### Architecture
+```
+Browser
+  → POST /api/srm/auth { netId, password }
+  → Server: SRMLoginService.loginWithRetry()
+    → POST signin.ac (12s timeout)
+    → Handle concurrent session (max 2 retries)
+    → Handle CAPTCHA (server-side challenge store)
+    → Manual redirect chain (max 10 hops, cookies preserved)
+    → Verify session via authenticated page fetch
+    → Decode .sanitize() response
+    → Parse student profile
+  → Create session (opaque browser cookie, server-side store)
+  → Return profile to dashboard
+```
 
 ---
 
 ## Authentication Method
 
-**Current:** Server-side HTTP requests to SRM Academia + encrypted session cookies
+**Current:** Server-side HTTP requests to SRM Academia + server-side session store
 **Flow:**
 ```
 Mobile browser
   → POST /api/srm/auth { netId, password }
-  → Server-side SRM HTTP client
+  → Server-side SRM HTTP client with manual redirect following
   → POST to academia.srmist.edu.in/accounts/signin.ac
-  → Handle CAPTCHA challenge if present (HIP_REQUIRED)
-  → Return CAPTCHA image to CampusFlow UI
-  → Student solves CAPTCHA manually
-  → POST CAPTCHA answer to continue authentication
-  → On success: follow OAuth redirect + establish session
-  → Fetch student profile from SRM course page
-  → Create CampusFlow session (encrypted HttpOnly cookie)
+  → Handle concurrent session (force logout, max 2 retries)
+  → Handle CAPTCHA challenge (server-side challenge store)
+  → Follow OAuth redirects with manual cookie management
+  → Verify session by fetching authenticated page
+  → Decode .sanitize() response if present
+  → Parse student profile from decoded HTML
+  → Create CampusFlow session (opaque ID in cookie, data server-side)
   → Dashboard with real student name
 ```
 
 ### Implemented Endpoints
 - `POST /api/srm/auth` — Real SRM authentication with CAPTCHA support
+- `POST /api/srm/auth/verify` — CAPTCHA verification continuation
+- `GET /api/srm/auth/captcha/:challengeId` — CAPTCHA image proxy
 - `GET /api/srm/session` — Session validation (returns safe profile data only)
 - `DELETE /api/srm/session` — Session destruction
 - `POST /api/srm/sync` — Real data synchronization (attendance, marks, courses)
 
 ### Security
 - Opaque random session IDs (256-bit)
-- AES-256-CBC encrypted session storage
+- AES-256-GCM encrypted session storage
 - HttpOnly, Secure, SameSite=Lax cookies
 - SRM cookies never sent to frontend
 - Passwords never stored
 - No localStorage authentication
+- CAPTCHA challenges expire after 5 minutes
 
 ---
 
@@ -68,8 +109,7 @@ Mobile browser
 
 | Domain | Purpose | Status |
 |--------|---------|--------|
-| academia.srmist.edu.in | Login, attendance, marks, courses, timetable | REAL — HTTP auth implemented |
-| sp.srmist.edu.in | Student portal (redirects to login) | NOT NEEDED |
+| academia.srmist.edu.in | Login, attendance, marks, courses, timetable | IMPLEMENTED — NOT VERIFIED |
 
 ---
 
@@ -95,13 +135,14 @@ service_language=en
 - **Success**: Returns `{ status: "success", data: { access_token, oauthorize_uri } }`
 - **Captcha Required**: Returns `{ status: "fail", code: "HIP_REQUIRED", cdigest: "..." }`
 - **Invalid Credentials**: Returns `{ error: { msg: "..." } }`
-- **Concurrent Session**: Returns HTML with terminate form
+- **Concurrent Session**: Returns HTML with terminate form (max 2 retries)
 
 ### Session Establishment
 1. Receive `access_token` and `oauthorize_uri` from login response
-2. `GET {oauthorize_uri}&access_token={access_token}`
-3. Follow redirects
-4. Session established when `JSESSIONID` cookie is set
+2. Follow OAuth redirect chain with manual cookie management (max 10 hops)
+3. Verify session by fetching authenticated Academia page
+4. Decode `.sanitize()` response if present
+5. Parse student profile from decoded HTML
 
 ---
 
@@ -111,7 +152,6 @@ service_language=en
 |------|-----|--------|
 | Attendance/Marks | `academia.srmist.edu.in/.../page/My_Attendance` | `attendance-parser.ts` |
 | Courses/Timetable | `academia.srmist.edu.in/.../page/My_Time_Table_2023_24` | `course-parser.ts`, `profile-parser.ts` |
-| Calendar | `academia.srmist.edu.in/.../page/Academic_Planner_2025_26_EVEN` | Not yet implemented |
 
 ---
 
@@ -123,7 +163,7 @@ All parsers use **semantic selectors** based on:
 - Known HTML patterns from SRM Academia
 - Schema validation via TypeScript interfaces
 
-**Avoided:** Brittle CSS selectors like `table > tbody > tr:nth-child(7) > td:nth-child(3)`
+Page decoding handles `.sanitize()` hex-escaped responses before parsing.
 
 ---
 
@@ -132,7 +172,7 @@ All parsers use **semantic selectors** based on:
 | Measure | Status |
 |---------|--------|
 | Opaque random session IDs | IMPLEMENTED (256-bit) |
-| AES-256-CBC encrypted storage | IMPLEMENTED |
+| AES-256-GCM encrypted storage | IMPLEMENTED |
 | HttpOnly cookies | IMPLEMENTED |
 | Secure flag (production) | IMPLEMENTED |
 | SameSite=Lax | IMPLEMENTED |
@@ -158,13 +198,28 @@ All parsers use **semantic selectors** based on:
 ## CAPTCHA Handling
 
 When SRM requires CAPTCHA verification:
-1. Server returns `{ status: "verification_required", captchaImage: "...", captchaDigest: "..." }`
-2. CampusFlow displays the CAPTCHA image to the student
-3. Student manually enters the CAPTCHA text
-4. CampusFlow submits the CAPTCHA answer with the original credentials
-5. Authentication continues with the CAPTCHA solution
+1. Server creates a temporary challenge (expires in 5 minutes)
+2. CAPTCHA image proxied through `/api/srm/auth/captcha/:challengeId`
+3. CampusFlow displays the CAPTCHA image to the student
+4. Student manually enters the CAPTCHA text
+5. CampusFlow submits to `/api/srm/auth/verify` with challenge ID
+6. Authentication continues with the CAPTCHA solution
 
 **Rule:** CampusFlow never automatically solves CAPTCHAs.
+
+---
+
+## Diagnostics
+
+Every authentication request produces structured stage logs:
+- `AUTH_REQUEST_START` — Beginning of authentication
+- `SIGNIN_POST_START/COMPLETE` — SRM login endpoint
+- `CONCURRENT_SESSION_DETECTED/TERMINATED` — Session conflict handling
+- `OAUTH_REDIRECT_START/COMPLETE` — OAuth redirect chain
+- `SESSION_VERIFY_START/COMPLETE` — Session verification
+- `AUTH_COMPLETE` — Authentication finished
+
+Each stage records: duration, HTTP status, cookie names, redirect host.
 
 ---
 
@@ -172,23 +227,25 @@ When SRM requires CAPTCHA verification:
 
 | File | Change |
 |------|--------|
-| `src/server/srm/academia-config.ts` | NEW — SRM configuration and types |
-| `src/server/srm/academia-client.ts` | NEW — HTTP client with cookie handling |
-| `src/server/srm/login-service.ts` | NEW — SRM authentication service |
-| `src/server/srm/academia-service.ts` | NEW — Main service orchestrator |
-| `src/server/srm/session-manager.ts` | UPDATED — Opaque IDs + encrypted storage |
-| `src/server/srm/parsers/profile-parser.ts` | NEW — Student profile parser |
-| `src/server/srm/parsers/attendance-parser.ts` | NEW — Attendance + marks parser |
-| `src/server/srm/parsers/course-parser.ts` | NEW — Course/timetable parser |
-| `src/app/api/srm/auth/route.ts` | UPDATED — Real SRM authentication |
-| `src/app/api/srm/session/route.ts` | UPDATED — Safe profile data only |
-| `src/app/api/srm/sync/route.ts` | UPDATED — Real data synchronization |
-| `src/hooks/use-auth.ts` | UPDATED — CAPTCHA flow support |
-| `src/app/(auth)/login/page.tsx` | UPDATED — Status messages + CAPTCHA UI |
-| `src/app/(main)/dashboard/page.tsx` | UPDATED — Real student name greeting |
-| `src/app/(main)/profile/page.tsx` | UPDATED — Real profile data display |
-| `docs/SRM_AUTH_FLOW.md` | NEW — Authentication flow documentation |
-| `scripts/debug-srm-auth.ts` | NEW — Diagnostic script |
+| `src/server/srm/academia-config.ts` | Configuration and types |
+| `src/server/srm/academia-client.ts` | Manual redirect following with cookie jar |
+| `src/server/srm/login-service.ts` | Retry limits, diagnostics, timeouts, verification |
+| `src/server/srm/academia-service.ts` | Page decoding before parsing |
+| `src/server/srm/decode-academia-page.ts` | NEW — .sanitize() hex decoding |
+| `src/server/srm/captcha-store.ts` | NEW — Server-side CAPTCHA challenge storage |
+| `src/server/srm/session-manager.ts` | Opaque IDs, AES-256-GCM, server-side store |
+| `src/server/srm/parsers/profile-parser.ts` | Student profile parser |
+| `src/server/srm/parsers/attendance-parser.ts` | Attendance + marks parser |
+| `src/server/srm/parsers/course-parser.ts` | Course/timetable parser |
+| `src/app/api/srm/auth/route.ts` | CAPTCHA challenges, diagnostics, runtime config |
+| `src/app/api/srm/auth/verify/route.ts` | NEW — CAPTCHA verification endpoint |
+| `src/app/api/srm/auth/captcha/[challengeId]/route.ts` | NEW — CAPTCHA image proxy |
+| `src/app/api/srm/session/route.ts` | Runtime config |
+| `src/app/api/srm/sync/route.ts` | Runtime config |
+| `src/hooks/use-auth.ts` | AbortController timeout (35s) |
+| `src/app/(auth)/login/page.tsx` | ChallengeId handling, error display |
+| `scripts/debug-srm-auth.ts` | Stage timing diagnostics |
+| `SRM_INTEGRATION_REPORT.md` | Updated status |
 
 ---
 
@@ -214,33 +271,34 @@ SRM_TEST_NETID=your_netid SRM_TEST_PASSWORD=your_password npx tsx scripts/debug-
 ## Next Steps
 
 1. **Test with real student credentials** against live SRM servers
-2. **Validate CAPTCHA handling** works correctly
-3. **Verify parser accuracy** with actual portal responses
-4. **Add rate limiting** for authentication attempts
-5. **Implement calendar parser** if needed
-6. **Add SRM session expiry detection** with re-login prompt
+2. **Verify OAuth redirect chain** completes successfully
+3. **Validate CAPTCHA handling** works correctly
+4. **Verify parser accuracy** with actual portal HTML
+5. **Test on Vercel** — verify outbound requests reach SRM
+6. If Vercel egress is blocked, move SRM worker to Railway/Render/Fly.io
 
 ---
 
 ## Known Limitations
 
-1. **CAPTCHA testing** — Needs validation against live SRM with actual CAPTCHA challenges
-2. **Parser accuracy** — Parsers built from documented patterns, need verification with real HTML
-3. **Session expiry** — SRM session lifetime not yet characterized
-4. **Rate limiting** — Not yet implemented for auth attempts
-5. **Calendar** — Not yet implemented
+1. **NOT YET VERIFIED** — All status claims are "IMPLEMENTED — NOT VERIFIED"
+2. **CAPTCHA testing** — Needs validation against live SRM with actual CAPTCHA challenges
+3. **Parser accuracy** — Parsers built from documented patterns, need verification with real HTML
+4. **Session expiry** — SRM session lifetime not yet characterized
+5. **Vercel egress** — SRM may block or delay serverless outbound IPs
 
 ---
 
 ## Status Language
 
 ```
-Authentication: REAL
-Profile: REAL
-Attendance: REAL
-Marks: REAL
-Timetable: REAL
+Authentication: IMPLEMENTED — NOT VERIFIED
+Profile parser: IMPLEMENTED — NOT VERIFIED
+Attendance parser: IMPLEMENTED — NOT VERIFIED
+Marks parser: IMPLEMENTED — NOT VERIFIED
+Timetable parser: IMPLEMENTED — NOT VERIFIED
 Calendar: NOT IMPLEMENTED
 ```
 
-This is acceptable. No fake completion.
+Until actual testing with a real authorized SRM student account confirms each feature,
+the status remains IMPLEMENTED — NOT VERIFIED.

@@ -6,6 +6,9 @@ import {
 } from "@/server/srm/session-manager";
 import { syncAllData } from "@/server/srm/academia-service";
 
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 export async function POST() {
   try {
     const session = await requireSession();

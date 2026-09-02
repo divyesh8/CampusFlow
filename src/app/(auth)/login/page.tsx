@@ -28,6 +28,7 @@ export default function LoginPage() {
   const [captchaImage, setCaptchaImage] = useState("");
   const [captchaDigest, setCaptchaDigest] = useState("");
   const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [challengeId, setChallengeId] = useState("");
 
   const getStatusText = () => {
     switch (status) {
@@ -63,6 +64,7 @@ export default function LoginPage() {
       setStatus("captcha_required");
       setCaptchaImage(result.captchaImage || "");
       setCaptchaDigest(result.captchaDigest || "");
+      setChallengeId(result.challengeId || "");
       return;
     }
 
@@ -90,7 +92,8 @@ export default function LoginPage() {
       netId.trim(),
       password,
       captchaDigest,
-      captchaAnswer.trim()
+      captchaAnswer.trim(),
+      challengeId || undefined
     );
 
     if (result.error) {
@@ -103,7 +106,10 @@ export default function LoginPage() {
     router.push("/dashboard");
   };
 
-  const isLoading = status === "connecting" || status === "authenticating" || status === "loading_profile";
+  const isLoading =
+    status === "connecting" ||
+    status === "authenticating" ||
+    status === "loading_profile";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
@@ -113,7 +119,9 @@ export default function LoginPage() {
             <CampusFlowLogo size={48} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">CampusFlow</h1>
-          <p className="text-sm text-muted-foreground">Your SRM academics, simplified.</p>
+          <p className="text-sm text-muted-foreground">
+            Your SRM academics, simplified.
+          </p>
         </div>
 
         <Card className="border-border">
@@ -126,7 +134,8 @@ export default function LoginPage() {
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  SRM requires CAPTCHA verification. Please enter the text from the image below.
+                  SRM requires CAPTCHA verification. Please enter the text from
+                  the image below.
                 </p>
 
                 {captchaImage && (
@@ -177,6 +186,7 @@ export default function LoginPage() {
                     setCaptchaImage("");
                     setCaptchaDigest("");
                     setCaptchaAnswer("");
+                    setChallengeId("");
                   }}
                 >
                   Cancel
@@ -208,7 +218,7 @@ export default function LoginPage() {
                   />
                 </div>
 
-                {status === "idle" && error && (
+                {status === "error" && error && (
                   <div className="flex items-start gap-2 text-destructive bg-destructive/10 px-3 py-2 rounded-lg">
                     <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                     <p className="text-sm">{error}</p>

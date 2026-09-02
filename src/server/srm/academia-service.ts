@@ -1,6 +1,7 @@
 import { SRMLoginService } from "./login-service";
 import { AcademiaClient } from "./academia-client";
 import { SRM_CONFIG, type SRMCookieJar } from "./academia-config";
+import { decodeAcademiaPage } from "./decode-academia-page";
 import { parseStudentProfile } from "./parsers/profile-parser";
 import { parseAttendance, parseMarks } from "./parsers/attendance-parser";
 import { parseCourses } from "./parsers/course-parser";
@@ -21,6 +22,7 @@ export type SRMAuthResult =
       success: true;
       cookies: SRMCookieJar;
       profile: SRMProfileData;
+      stageLogs: ReturnType<SRMLoginService["getStageLogs"]>;
     }
   | {
       success: false;
@@ -28,6 +30,7 @@ export type SRMAuthResult =
       requiresCaptcha?: boolean;
       captchaImage?: string;
       captchaDigest?: string;
+      stageLogs: ReturnType<SRMLoginService["getStageLogs"]>;
     };
 
 export async function authenticateWithSRM(
@@ -50,6 +53,8 @@ export async function authenticateWithSRM(
     captchaAnswer
   );
 
+  const stageLogs = loginService.getStageLogs();
+
   if (!loginResult.success) {
     if (loginResult.requiresCaptcha) {
       return {
@@ -58,11 +63,13 @@ export async function authenticateWithSRM(
         requiresCaptcha: true,
         captchaImage: loginResult.captchaImage,
         captchaDigest: loginResult.captchaDigest,
+        stageLogs,
       };
     }
     return {
       success: false,
       error: loginResult.error || "Authentication failed",
+      stageLogs,
     };
   }
 
@@ -72,6 +79,7 @@ export async function authenticateWithSRM(
       return {
         success: false,
         error: "Connected to SRM, but couldn't read your profile",
+        stageLogs,
       };
     }
 
@@ -79,11 +87,13 @@ export async function authenticateWithSRM(
       success: true,
       cookies: loginResult.cookies,
       profile,
+      stageLogs,
     };
   } catch {
     return {
       success: false,
       error: "Failed to fetch student profile from SRM",
+      stageLogs,
     };
   }
 }
@@ -101,12 +111,20 @@ async function fetchStudentProfile(
   });
 
   if (response.status !== 200) {
+    console.log(`[SRM Profile] Failed to fetch: HTTP ${response.status}`);
     return null;
   }
 
-  const profile = parseStudentProfile(response.text);
+  const decoded = decodeAcademiaPage(response.text);
+  if (decoded.error) {
+    console.log(`[SRM Profile] Page decode error: ${decoded.error}`);
+    return null;
+  }
+
+  const profile = parseStudentProfile(decoded.html);
 
   if (!profile.name && !profile.regNumber) {
+    console.log("[SRM Profile] No name or regNumber found in parsed profile");
     return null;
   }
 
@@ -136,7 +154,12 @@ export async function fetchAttendance(cookies: SRMCookieJar) {
     return { regNumber: "", attendance: [], error: `HTTP ${response.status}` };
   }
 
-  return parseAttendance(response.text);
+  const decoded = decodeAcademiaPage(response.text);
+  if (decoded.error) {
+    return { regNumber: "", attendance: [], error: decoded.error };
+  }
+
+  return parseAttendance(decoded.html);
 }
 
 export async function fetchMarks(cookies: SRMCookieJar) {
@@ -153,7 +176,12 @@ export async function fetchMarks(cookies: SRMCookieJar) {
     return { regNumber: "", marks: [], error: `HTTP ${response.status}` };
   }
 
-  return parseMarks(response.text);
+  const decoded = decodeAcademiaPage(response.text);
+  if (decoded.error) {
+    return { regNumber: "", marks: [], error: decoded.error };
+  }
+
+  return parseMarks(decoded.html);
 }
 
 export async function fetchCourses(cookies: SRMCookieJar) {
@@ -170,7 +198,12 @@ export async function fetchCourses(cookies: SRMCookieJar) {
     return { regNumber: "", courses: [], error: `HTTP ${response.status}` };
   }
 
-  return parseCourses(response.text);
+  const decoded = decodeAcademiaPage(response.text);
+  if (decoded.error) {
+    return { regNumber: "", courses: [], error: decoded.error };
+  }
+
+  return parseCourses(decoded.html);
 }
 
 export async function syncAllData(cookies: SRMCookieJar) {

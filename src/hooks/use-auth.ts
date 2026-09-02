@@ -9,12 +9,14 @@ interface AuthContextType {
     requiresCaptcha?: boolean;
     captchaImage?: string;
     captchaDigest?: string;
+    challengeId?: string;
   }>;
   signInWithCaptcha: (
     netId: string,
     password: string,
     captchaDigest: string,
-    captchaAnswer: string
+    captchaAnswer: string,
+    challengeId?: string
   ) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   lastSyncAt: string | null;
@@ -27,6 +29,8 @@ export function useAuth() {
   if (!context) throw new Error("useAuth must be used within AuthProvider");
   return context;
 }
+
+const AUTH_TIMEOUT_MS = 35_000;
 
 export function useAuthProvider(): AuthContextType {
   const [user, setUser] = useState<StudentProfile | null>(null);
@@ -45,20 +49,22 @@ export function useAuthProvider(): AuthContextType {
           setLastSyncAt(data.lastSyncAt || null);
         }
       })
-      .catch(() => {
-        // No valid session
-      })
+      .catch(() => {})
       .finally(() => {
         setLoading(false);
       });
   }, []);
 
   const signIn = useCallback(async (netId: string, password: string) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+
     try {
       const res = await fetch("/api/srm/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ netId, password }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
@@ -69,6 +75,7 @@ export function useAuthProvider(): AuthContextType {
           requiresCaptcha: true,
           captchaImage: data.captchaImage,
           captchaDigest: data.captchaDigest,
+          challengeId: data.challengeId,
         };
       }
 
@@ -80,8 +87,16 @@ export function useAuthProvider(): AuthContextType {
         setUser(data.profile);
       }
       return {};
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return {
+          error:
+            "SRM authentication timed out. Please try again.",
+        };
+      }
       return { error: "Network error. Please check your connection." };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }, []);
 
@@ -90,9 +105,37 @@ export function useAuthProvider(): AuthContextType {
       netId: string,
       password: string,
       captchaDigest: string,
-      captchaAnswer: string
+      captchaAnswer: string,
+      challengeId?: string
     ) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+
       try {
+        if (challengeId) {
+          const res = await fetch("/api/srm/auth/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              challengeId,
+              captchaAnswer,
+              password,
+            }),
+            signal: controller.signal,
+          });
+
+          const data = await res.json();
+
+          if (!res.ok || data.error) {
+            return { error: data.error || "Authentication failed." };
+          }
+
+          if (data.profile) {
+            setUser(data.profile);
+          }
+          return {};
+        }
+
         const res = await fetch("/api/srm/auth", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -102,6 +145,7 @@ export function useAuthProvider(): AuthContextType {
             captchaDigest,
             captchaAnswer,
           }),
+          signal: controller.signal,
         });
 
         const data = await res.json();
@@ -114,8 +158,16 @@ export function useAuthProvider(): AuthContextType {
           setUser(data.profile);
         }
         return {};
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return {
+            error:
+              "SRM authentication timed out. Please try again.",
+          };
+        }
         return { error: "Network error. Please check your connection." };
+      } finally {
+        clearTimeout(timeoutId);
       }
     },
     []
@@ -124,9 +176,7 @@ export function useAuthProvider(): AuthContextType {
   const signOut = useCallback(async () => {
     try {
       await fetch("/api/srm/session", { method: "DELETE" });
-    } catch {
-      // Ignore errors on sign out
-    }
+    } catch {}
     setUser(null);
     setLastSyncAt(null);
   }, []);

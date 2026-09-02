@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createSession } from "@/server/srm/session-manager";
 import { authenticateWithSRM } from "@/server/srm/academia-service";
+import { createChallenge } from "@/server/srm/captcha-store";
 import type { StudentProfile } from "@/types";
+
+export const runtime = "nodejs";
+export const maxDuration = 30;
 
 const AuthSchema = z.object({
   netId: z.string().min(1, "NetID is required"),
@@ -63,7 +67,9 @@ export async function POST(request: NextRequest) {
     const { netId, password, captchaDigest, captchaAnswer, existingCookies } =
       parsed.data;
 
-    console.log("[SRM Auth] Attempting authentication for:", netId);
+    console.log(
+      `[SRM Auth] Attempting authentication for: ${netId.replace(/(.{2}).*/, "$1***")}`
+    );
 
     const result = await authenticateWithSRM(
       netId,
@@ -73,16 +79,36 @@ export async function POST(request: NextRequest) {
       captchaAnswer
     );
 
-    if (!result.success) {
-      console.log("[SRM Auth] Authentication failed:", result.error);
+    if (result.stageLogs) {
+      for (const log of result.stageLogs) {
+        const parts = [log.stage, `${log.duration}ms`];
+        if (log.httpStatus) parts.push(`HTTP ${log.httpStatus}`);
+        if (log.error) parts.push(`ERR: ${log.error}`);
+        if (log.cookieNames?.length)
+          parts.push(`cookies: ${log.cookieNames.length}`);
+        console.log(`[SRM Auth Stage] ${parts.join(" | ")}`);
+      }
+    }
 
+    if (!result.success) {
       if (result.requiresCaptcha) {
+        const challenge = createChallenge(
+          netId,
+          password,
+          {} as Record<string, string>,
+          result.captchaDigest || "",
+          result.captchaImage || ""
+        );
+
+        const captchaProxyUrl = `/api/srm/auth/captcha/${challenge.challengeId}`;
+
         return NextResponse.json(
           {
             status: "verification_required",
             error: result.error,
             challengeType: "captcha",
-            captchaImage: result.captchaImage,
+            challengeId: challenge.challengeId,
+            captchaImage: captchaProxyUrl,
             captchaDigest: result.captchaDigest,
           },
           { status: 401 }
@@ -95,14 +121,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("[SRM Auth] Authentication successful for:", netId);
-    console.log("[SRM Auth] Profile name:", result.profile.name);
+    console.log(
+      `[SRM Auth] Authentication successful for: ${netId.replace(/(.{2}).*/, "$1***")}`
+    );
+    console.log(`[SRM Auth] Profile name: ${result.profile.name ? "found" : "missing"}`);
 
     const studentProfile = createStudentProfile(netId, result.profile);
 
-    const sessionId = await createSession(studentProfile, result.cookies);
-
-    console.log("[SRM Auth] Session created:", sessionId);
+    await createSession(studentProfile, result.cookies);
 
     return NextResponse.json({
       success: true,

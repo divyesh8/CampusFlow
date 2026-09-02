@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession, destroySession } from "@/server/srm/session-manager";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   try {
     const session = await getSession();
