@@ -4,19 +4,9 @@ import type {
   SubjectMarks,
   Exam,
   Assignment,
-  AcademicEvent,
-  CampusEvent,
-  Club,
-  MessMenu,
-  Notification,
   ChangeLog,
-  TodayOverview,
   AcademicStanding,
 } from "@/types";
-
-function dayOfWeek(dateStr: string): number {
-  return new Date(dateStr).getDay();
-}
 
 export function calculateAttendancePercentage(attended: number, conducted: number): number {
   if (conducted === 0) return 0;
@@ -248,7 +238,6 @@ export function getChangesSinceLastVisit(
     attendance?: { subjectName: string; old: number; new: number }[];
     timetable?: string[];
   },
-  lastVisit: string
 ): ChangeLog[] {
   const changes: ChangeLog[] = [];
   const now = new Date().toISOString();

@@ -2,7 +2,6 @@ import type {
   StudentProfile,
   SubjectAttendance,
   TimetableEntry,
-  SubjectMarks,
   Exam,
   Assignment,
   AcademicEvent,

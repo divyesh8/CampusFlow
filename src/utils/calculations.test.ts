@@ -411,7 +411,7 @@ describe("getChangesSinceLastVisit", () => {
       attendance: [{ subjectName: "Physics", old: 80, new: 75 }],
       timetable: ["Room changed for Math"],
     };
-    const result = getChangesSinceLastVisit(data, "2026-09-01");
+    const result = getChangesSinceLastVisit(data);
     expect(result).toHaveLength(3);
     expect(result[0].type).toBe("marks");
     expect(result[1].type).toBe("attendance");
@@ -419,7 +419,7 @@ describe("getChangesSinceLastVisit", () => {
   });
 
   it("returns empty for no changes", () => {
-    const result = getChangesSinceLastVisit({}, "2026-09-01");
+    const result = getChangesSinceLastVisit({});
     expect(result).toHaveLength(0);
   });
 });

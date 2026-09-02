@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { AppShell } from "@/components/layout/app-shell";
+import { DashboardSkeleton } from "@/components/skeletons";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -23,10 +24,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   if (loading || !mounted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs text-muted-foreground">Loading CampusFlow\u2026</p>
+      <div className="min-h-screen bg-background flex justify-center">
+        <div className="w-full max-w-[430px]">
+          <DashboardSkeleton />
         </div>
       </div>
     );
