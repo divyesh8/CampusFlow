@@ -7,15 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GraduationCap } from "lucide-react";
-import { UNIVERSES } from "@/config/constants";
 
 export default function LoginPage() {
   const router = useRouter();
   const { signIn, isDemo } = useAuth();
   const [mode, setMode] = useState<"university" | "manual">("university");
-  const [university, setUniversity] = useState("");
   const [studentId, setStudentId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -84,21 +81,6 @@ export default function LoginPage() {
             {mode === "university" ? (
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>University</Label>
-                  <Select value={university} onValueChange={(v) => { if (v) setUniversity(v); }}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select your university" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {UNIVERSES.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label>Student ID / Net ID</Label>
                   <Input
                     placeholder="e.g. RA2311003010001"
@@ -110,7 +92,7 @@ export default function LoginPage() {
                   <Label>Email</Label>
                   <Input
                     type="email"
-                    placeholder="your.email@university.edu"
+                    placeholder="your.email@srmist.edu.in"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -119,7 +101,7 @@ export default function LoginPage() {
                   <Label>Password</Label>
                   <Input
                     type="password"
-                    placeholder="University password"
+                    placeholder="SRM portal password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
