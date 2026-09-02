@@ -1,11 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createSession, type SessionData } from "@/server/srm/session-manager";
+import { createSession } from "@/server/srm/session-manager";
+import { authenticateWithSRM } from "@/server/srm/academia-service";
+import type { StudentProfile } from "@/types";
 
 const AuthSchema = z.object({
   netId: z.string().min(1, "NetID is required"),
   password: z.string().min(1, "Password is required"),
+  captchaDigest: z.string().optional(),
+  captchaAnswer: z.string().optional(),
+  existingCookies: z.record(z.string(), z.string()).optional(),
 });
+
+function createStudentProfile(
+  netId: string,
+  srmProfile: {
+    name: string;
+    regNumber: string;
+    program: string;
+    department: string;
+    semester: number;
+    section: string;
+    batch: string;
+    mobile: string;
+  } | null
+): StudentProfile {
+  const email = `${netId}@srmist.edu.in`;
+
+  return {
+    id: `cf-${netId}`,
+    userId: `user-${netId}`,
+    universityId: "srm",
+    campusId: "srm-main",
+    studentId: netId,
+    netId,
+    name: srmProfile?.name || "",
+    email,
+    program: srmProfile?.program || "",
+    department: srmProfile?.department || "",
+    year: 0,
+    semester: srmProfile?.semester || 0,
+    section: srmProfile?.section || "",
+    attendanceThreshold: 75,
+    onboarded: !!(srmProfile?.name && srmProfile?.regNumber),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,58 +60,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SRM authentication will be implemented here.
-    // For now, validate that credentials are non-empty and create a session
-    // that represents a "pending verification" state.
-    //
-    // When real SRM integration is built:
-    // 1. POST to SRM Academia login endpoint with credentials
-    // 2. Handle CAPTCHA/MFA challenges
-    // 3. On success, fetch student profile from SRM
-    // 4. Normalize and store the profile
-    // 5. Create session with real student data
+    const { netId, password, captchaDigest, captchaAnswer, existingCookies } =
+      parsed.data;
 
-    const { netId } = parsed.data;
-    const email = `${netId}@srmist.edu.in`;
+    console.log("[SRM Auth] Attempting authentication for:", netId);
 
-    // Placeholder: In production, this would be the real SRM profile
-    // fetched after successful authentication.
-    const studentProfile = {
-      id: `cf-${netId}`,
-      userId: `user-${netId}`,
-      universityId: "srm",
-      campusId: "srm-main",
-      studentId: netId,
-      name: "", // Will be filled from SRM after real auth
-      email,
-      program: "",
-      department: "",
-      year: 0,
-      semester: 0,
-      attendanceThreshold: 75,
-      onboarded: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    const sessionData: SessionData = {
-      userId: `user-${netId}`,
+    const result = await authenticateWithSRM(
       netId,
-      email,
-      studentProfile,
-      createdAt: new Date().toISOString(),
-    };
+      password,
+      existingCookies as Record<string, string> | undefined,
+      captchaDigest,
+      captchaAnswer
+    );
 
-    await createSession(sessionData);
+    if (!result.success) {
+      console.log("[SRM Auth] Authentication failed:", result.error);
+
+      if (result.requiresCaptcha) {
+        return NextResponse.json(
+          {
+            status: "verification_required",
+            error: result.error,
+            challengeType: "captcha",
+            captchaImage: result.captchaImage,
+            captchaDigest: result.captchaDigest,
+          },
+          { status: 401 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: result.error },
+        { status: 401 }
+      );
+    }
+
+    console.log("[SRM Auth] Authentication successful for:", netId);
+    console.log("[SRM Auth] Profile name:", result.profile.name);
+
+    const studentProfile = createStudentProfile(netId, result.profile);
+
+    const sessionId = await createSession(studentProfile, result.cookies);
+
+    console.log("[SRM Auth] Session created:", sessionId);
 
     return NextResponse.json({
       success: true,
-      requiresVerification: false,
-      message: "Authentication successful. SRM integration pending.",
       profile: studentProfile,
     });
   } catch (error) {
-    console.error("[SRM Auth]", error);
+    console.error("[SRM Auth] Error:", error);
     return NextResponse.json(
       { error: "Authentication failed. Please try again." },
       { status: 500 }

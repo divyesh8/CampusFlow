@@ -4,14 +4,19 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LogOut, GraduationCap } from "lucide-react";
+import { LogOut, GraduationCap, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function ProfilePage() {
   const { user, signOut } = useAuth();
 
   const initials = user?.name
-    ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : user?.netId?.slice(0, 2).toUpperCase() || "CF";
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : user?.studentId?.slice(0, 2).toUpperCase() || "CF";
 
   return (
     <div className="space-y-6">
@@ -28,11 +33,17 @@ export default function ProfilePage() {
               <span className="text-lg font-bold text-muted-foreground">{initials}</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h2 className="text-base font-bold truncate">{user?.name || "Student"}</h2>
-              <p className="text-xs text-muted-foreground truncate">{user?.studentId || "Not available"}</p>
+              <h2 className="text-base font-bold truncate">
+                {user?.name || "Student"}
+              </h2>
+              <p className="text-xs text-muted-foreground truncate">
+                {user?.studentId || "Not available"}
+              </p>
               <div className="flex items-center gap-1.5 mt-1">
                 <GraduationCap className="h-3 w-3 text-muted-foreground" />
-                <p className="text-[11px] text-muted-foreground">SRM Institute of Science and Technology</p>
+                <p className="text-[11px] text-muted-foreground">
+                  SRM Institute of Science and Technology
+                </p>
               </div>
             </div>
           </div>
@@ -42,8 +53,14 @@ export default function ProfilePage() {
       {/* Academic */}
       <Card className="border-border">
         <CardContent className="p-4 space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Academic</h3>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Academic
+          </h3>
           <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] text-muted-foreground">Register Number</p>
+              <p className="text-sm font-medium">{user?.studentId || "Not available"}</p>
+            </div>
             <div>
               <p className="text-[10px] text-muted-foreground">Program</p>
               <p className="text-sm font-medium">{user?.program || "Not available"}</p>
@@ -54,11 +71,17 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground">Semester</p>
-              <p className="text-sm font-medium">{user?.semester ? `${user.semester}` : "Not available"}</p>
+              <p className="text-sm font-medium">
+                {user?.semester ? `${user.semester}` : "Not available"}
+              </p>
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground">Section</p>
               <p className="text-sm font-medium">{user?.section || "Not available"}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground">Batch</p>
+              <p className="text-sm font-medium">{user?.year || "Not available"}</p>
             </div>
           </div>
         </CardContent>
@@ -67,7 +90,9 @@ export default function ProfilePage() {
       {/* Account */}
       <Card className="border-border">
         <CardContent className="p-4 space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Account</h3>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Account
+          </h3>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">NetID</span>
@@ -84,15 +109,27 @@ export default function ProfilePage() {
       {/* Connection */}
       <Card className="border-border">
         <CardContent className="p-4 space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Connection</h3>
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Connection
+          </h3>
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">SRM</p>
-              <p className="text-[10px] text-muted-foreground">
-                {user?.onboarded ? "Connected" : "Pending setup"}
-              </p>
+            <div className="flex items-center gap-2">
+              {user?.onboarded ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+              )}
+              <div>
+                <p className="text-sm font-medium">SRM Academia</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {user?.onboarded ? "Connected & verified" : "Pending setup"}
+                </p>
+              </div>
             </div>
-            <Badge variant={user?.onboarded ? "default" : "secondary"} className="text-[10px]">
+            <Badge
+              variant={user?.onboarded ? "default" : "secondary"}
+              className="text-[10px]"
+            >
               {user?.onboarded ? "Connected" : "Pending"}
             </Badge>
           </div>
@@ -106,7 +143,8 @@ export default function ProfilePage() {
       </Button>
 
       <p className="text-center text-[10px] text-muted-foreground">
-        CampusFlow is an independent student-built tool and is not an official SRMIST service.
+        CampusFlow is an independent student-built tool and is not an official
+        SRMIST service.
       </p>
     </div>
   );

@@ -10,6 +10,7 @@ import {
   Calendar,
   ChevronRight,
   TrendingUp,
+  CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
@@ -73,7 +74,9 @@ export default function DashboardPage() {
     }
   };
 
-  const displayName = user?.name?.split(" ")[0] || user?.studentId || "Student";
+  const displayName = user?.name
+    ? user.name.split(" ")[0]
+    : user?.studentId || "Student";
 
   return (
     <div className="space-y-5">
@@ -98,8 +101,29 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* SRM Integration Notice */}
-      {!user?.onboarded && (
+      {/* Connection Status */}
+      {user?.onboarded ? (
+        <Card className="border-green-200 dark:border-green-900 bg-green-500/5">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-green-700 dark:text-green-300">
+                  Connected to SRM
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {user.name || user.studentId} \u2022 {user.email}
+                </p>
+              </div>
+              <Link href="/profile">
+                <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                  Profile <ChevronRight className="h-3 w-3" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
         <Card className="border-amber-200 dark:border-amber-900 bg-amber-500/5">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
@@ -131,7 +155,7 @@ export default function DashboardPage() {
               </div>
               <p className="text-xl font-bold">--</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Connect SRM to view
+                {user?.onboarded ? "Tap to view" : "Connect SRM to view"}
               </p>
             </CardContent>
           </Card>
@@ -146,7 +170,7 @@ export default function DashboardPage() {
               </div>
               <p className="text-xl font-bold">--</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Connect SRM to view
+                {user?.onboarded ? "Tap to view" : "Connect SRM to view"}
               </p>
             </CardContent>
           </Card>
@@ -160,7 +184,7 @@ export default function DashboardPage() {
             </div>
             <p className="text-xl font-bold">--</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              Connect SRM to view
+              {user?.onboarded ? "From timetable" : "Connect SRM to view"}
             </p>
           </CardContent>
         </Card>
@@ -174,32 +198,34 @@ export default function DashboardPage() {
               </div>
               <p className="text-sm font-bold">--</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Connect SRM to view
+                {user?.onboarded ? "From calendar" : "Connect SRM to view"}
               </p>
             </CardContent>
           </Card>
         </Link>
       </div>
 
-      {/* Sync Prompt */}
-      <Card className="border-border">
-        <CardContent className="p-4 text-center">
-          <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm font-medium">SRM sync not yet implemented</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Real-time attendance, marks and timetable from SRM Academia coming soon.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={handleSync}
-            disabled={syncStatus === "syncing"}
-          >
-            {syncStatus === "syncing" ? "Syncing\u2026" : "Try Sync"}
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Sync */}
+      {user?.onboarded && (
+        <Card className="border-border">
+          <CardContent className="p-4 text-center">
+            <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+            <p className="text-sm font-medium">Keep your data fresh</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Sync to get the latest attendance, marks and timetable.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={handleSync}
+              disabled={syncStatus === "syncing"}
+            >
+              {syncStatus === "syncing" ? "Syncing\u2026" : "Sync Now"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
