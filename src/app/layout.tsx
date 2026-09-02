@@ -16,11 +16,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CampusFlow — Everything about college. One dashboard.",
-  description: "Attendance, marks, timetable, exams and campus life — one dashboard for university students.",
+  title: "CampusFlow — Your SRM academics, simplified.",
+  description: "Attendance, marks, timetable and academic updates from your SRM portal — clear, fast and built for mobile.",
   manifest: "/manifest.json",
   icons: {
     icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 

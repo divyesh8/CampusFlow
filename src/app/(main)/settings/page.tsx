@@ -1,161 +1,131 @@
 "use client";
 
 import { useAuth } from "@/hooks/use-auth";
-import { useTheme } from "@/components/theme-provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Sun, Moon, Monitor, Download, Trash2, RefreshCw } from "lucide-react";
+import { RefreshCw, Unplug, Shield, Info } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+
+function formatSyncTime(lastSyncAt: string | null) {
+  if (!lastSyncAt) return "Never";
+  const diff = Date.now() - new Date(lastSyncAt).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.floor(mins / 60)}h ago`;
+}
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const { theme, setTheme } = useTheme();
+  const { user, signOut, lastSyncAt } = useAuth();
+  const [syncing, setSyncing] = useState(false);
+  const [, setTick] = useState(0);
+
+  const syncLabel = formatSyncTime(lastSyncAt);
+
+  const tick = useCallback(() => setTick((t) => t + 1), []);
+
+  useEffect(() => {
+    const id = setInterval(tick, 60000);
+    return () => clearInterval(id);
+  }, [tick]);
+
+  const handleSync = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await fetch("/api/srm/sync", { method: "POST" });
+    } catch {
+      // ignore
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    await signOut();
+  };
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your preferences</p>
+        <h1 className="text-xl font-bold">Settings</h1>
+        <p className="text-xs text-muted-foreground mt-1">App configuration and connection</p>
       </div>
 
-      {/* Appearance */}
+      {/* SRM Connection */}
       <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Appearance</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Theme</p>
-              <p className="text-xs text-muted-foreground">Select your preferred theme</p>
+        <CardContent className="p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">SRM Connection</h3>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Status</span>
+              <Badge variant={user?.onboarded ? "default" : "secondary"} className="text-[10px]">
+                {user?.onboarded ? "Connected" : "Pending"}
+              </Badge>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant={theme === "light" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("light")}
-              >
-                <Sun className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={theme === "dark" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("dark")}
-              >
-                <Moon className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={theme === "system" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTheme("system")}
-              >
-                <Monitor className="h-4 w-4" />
-              </Button>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">NetID</span>
+              <span className="text-xs font-medium">{user?.studentId || "Not connected"}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Last Sync</span>
+              <span className="text-xs font-medium">{syncLabel}</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Academic */}
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Academic</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Attendance Threshold</p>
-              <p className="text-xs text-muted-foreground">Set your required attendance percentage</p>
-            </div>
-            <Select defaultValue={String(user?.attendanceThreshold || 75)}>
-              <SelectTrigger className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="70">70%</SelectItem>
-                <SelectItem value="75">75%</SelectItem>
-                <SelectItem value="80">80%</SelectItem>
-                <SelectItem value="85">85%</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Notifications</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {[
-            { label: "Attendance alerts", description: "Get notified when attendance drops" },
-            { label: "Marks updates", description: "When new marks are published" },
-            { label: "Timetable changes", description: "When your schedule changes" },
-            { label: "Exam reminders", description: "Upcoming exam notifications" },
-            { label: "Assignment deadlines", description: "Assignment due date reminders" },
-            { label: "Campus events", description: "New events and activities" },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">{item.label}</p>
-                <p className="text-xs text-muted-foreground">{item.description}</p>
-              </div>
-              <Switch defaultChecked />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* University Integration */}
-      <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">University Integration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Connected Account</p>
-              <p className="text-xs text-muted-foreground">{user?.universityId.toUpperCase()} — {user?.studentId}</p>
-            </div>
-            <Button variant="outline" size="sm" className="gap-1">
-              <RefreshCw className="h-3.5 w-3.5" />
-              Reconnect
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
+              Sync Now
             </Button>
-          </div>
-          <Separator />
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Last synced</p>
-              <p className="text-xs text-muted-foreground">2 minutes ago</p>
-            </div>
-            <Button variant="outline" size="sm" className="gap-1">
-              <RefreshCw className="h-3.5 w-3.5" />
-              Sync now
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={handleDisconnect}
+            >
+              <Unplug className="h-3.5 w-3.5 mr-1.5" />
+              Disconnect
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Data */}
+      {/* About */}
       <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Data</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Button variant="outline" className="w-full justify-start gap-2">
-            <Download className="h-4 w-4" />
-            Export my data
-          </Button>
-          <Button variant="outline" className="w-full justify-start gap-2 text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-            Delete my account
-          </Button>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Info className="h-4 w-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">About</h3>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Version</span>
+              <span className="text-xs font-medium">0.1.0</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">SRM Integration</span>
+              <Badge variant="secondary" className="text-[10px]">In Development</Badge>
+            </div>
+          </div>
         </CardContent>
       </Card>
+
+      <p className="text-center text-[10px] text-muted-foreground leading-relaxed">
+        CampusFlow is an independent student-built tool and is not an official SRMIST service.
+        Your SRM password is used only during authentication and is never stored.
+      </p>
     </div>
   );
 }

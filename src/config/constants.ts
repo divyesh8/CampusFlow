@@ -1,13 +1,9 @@
 export const APP_NAME = "CampusFlow";
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 export const DEFAULT_ATTENDANCE_THRESHOLD = 75;
 
 export const UNIVERSES = [
-  { id: "srm", name: "SRM University", shortName: "SRM", provider: "srm" },
-  { id: "vit", name: "VIT University", shortName: "VIT", provider: "vit" },
-  { id: "manipal", name: "Manipal University", shortName: "MU", provider: "manipal" },
-  { id: "manual", name: "Other / Manual Entry", shortName: "Manual", provider: "manual" },
+  { id: "srm", name: "SRM Institute of Science and Technology", shortName: "SRM", provider: "srm" },
 ] as const;
 
 export const EVENT_CATEGORIES = [

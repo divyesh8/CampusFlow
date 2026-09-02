@@ -3,113 +3,92 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { GraduationCap, Clock, BookOpen, Calendar, Bell, Shield, ArrowRight } from "lucide-react";
+import { CampusFlowLogo } from "@/components/brand/campusflow-logo";
+import { Clock, BookOpen, BarChart3, Shield } from "lucide-react";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <GraduationCap className="h-6 w-6" />
-            <span className="text-lg font-bold">CampusFlow</span>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-background flex justify-center">
+      <div className="w-full max-w-[430px]">
+        <header className="border-b border-border">
+          <div className="px-4 h-14 flex items-center justify-between">
+            <CampusFlowLogo size={24} showWordmark />
             <Link href="/login">
               <Button variant="ghost" size="sm">Sign In</Button>
             </Link>
-            <Link href="/login">
-              <Button size="sm">Get Started</Button>
+          </div>
+        </header>
+
+        <section className="px-4 py-16 text-center">
+          <div className="flex justify-center mb-6">
+            <CampusFlowLogo size={56} />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tight max-w-sm mx-auto">
+            Know where you stand. Every day.
+          </h1>
+          <p className="text-sm text-muted-foreground mt-3 max-w-xs mx-auto leading-relaxed">
+            Attendance, marks, timetable and academic updates from your SRM portal — clear, fast and built for mobile.
+          </p>
+          <div className="flex flex-col items-center gap-3 mt-8">
+            <Link href="/login" className="w-full max-w-xs">
+              <Button size="lg" className="w-full">
+                Connect SRM
+              </Button>
+            </Link>
+            <Link href="/login" className="w-full max-w-xs">
+              <Button size="lg" variant="outline" className="w-full">
+                Preview
+              </Button>
             </Link>
           </div>
-        </div>
-      </header>
+        </section>
 
-      <section className="max-w-6xl mx-auto px-4 py-20 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight max-w-2xl mx-auto">
-          College shouldn&apos;t need ten different apps.
-        </h1>
-        <p className="text-lg text-muted-foreground mt-4 max-w-xl mx-auto">
-          Attendance, marks, timetable, exams and campus life — one dashboard.
-        </p>
-        <div className="flex items-center justify-center gap-3 mt-8">
-          <Link href="/login">
-            <Button size="lg" className="gap-2">
-              Get Started <ArrowRight className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/login">
-            <Button size="lg" variant="outline">
-              View Demo
-            </Button>
-          </Link>
-        </div>
-      </section>
-
-      <section className="max-w-6xl mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <section className="px-4 py-12 space-y-4">
           {[
             {
+              icon: BarChart3,
+              title: "Real Academics",
+              description: "Attendance and marks synchronized from your connected SRM account.",
+            },
+            {
               icon: Clock,
-              title: "Smart Timetable",
-              description: "Your weekly schedule with next class, free periods, and real-time updates.",
+              title: "Smart Attendance",
+              description: "Know how many classes you can miss or need to attend.",
             },
             {
               icon: BookOpen,
-              title: "Attendance Tracker",
-              description: "Can I Bunk calculator, recovery tracker, and simulated predictions.",
-            },
-            {
-              icon: Calendar,
-              title: "Academic Calendar",
-              description: "Exams, assignments, and campus events in one place.",
-            },
-            {
-              icon: Bell,
-              title: "Notifications",
-              description: "Attendance alerts, marks updates, and deadline reminders.",
-            },
-            {
-              icon: Shield,
-              title: "Privacy First",
-              description: "Your academic data belongs to you. We never share it.",
-            },
-            {
-              icon: GraduationCap,
-              title: "University Integration",
-              description: "Connect to your university for automatic data sync.",
+              title: "Today",
+              description: "See your next class, academic risks and important updates immediately.",
             },
           ].map((feature) => (
             <Card key={feature.title} className="border-border">
-              <CardContent className="p-6">
-                <feature.icon className="h-8 w-8 text-muted-foreground mb-3" />
-                <h3 className="text-sm font-semibold">{feature.title}</h3>
-                <p className="text-xs text-muted-foreground mt-1">{feature.description}</p>
+              <CardContent className="p-4 flex items-start gap-3">
+                <div className="h-9 w-9 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                  <feature.icon className="h-4.5 w-4.5 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">{feature.title}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{feature.description}</p>
+                </div>
               </CardContent>
             </Card>
           ))}
-        </div>
-      </section>
+        </section>
 
-      <section className="max-w-6xl mx-auto px-4 py-16 text-center">
-        <h2 className="text-2xl font-bold">Ready to simplify college?</h2>
-        <p className="text-muted-foreground mt-2">Join CampusFlow and focus on what matters.</p>
-        <Link href="/login" className="mt-6 inline-block">
-          <Button size="lg" className="gap-2">
-            Get Started <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-      </section>
-
-      <footer className="border-t border-border">
-        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between text-xs text-muted-foreground">
-          <p>&copy; 2026 CampusFlow. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <Link href="/login">Privacy</Link>
-            <Link href="/login">Terms</Link>
+        <section className="px-4 py-8 text-center border-t border-border">
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <Shield className="h-4 w-4 text-muted-foreground" />
+            <p className="text-xs font-medium text-muted-foreground">Privacy</p>
           </div>
-        </div>
-      </footer>
+          <p className="text-[11px] text-muted-foreground leading-relaxed max-w-xs mx-auto">
+            Your SRM password is used only during authentication and is never stored by CampusFlow.
+            Disconnect anytime.
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-4">
+            CampusFlow is an independent student-built tool and is not an official SRMIST service.
+          </p>
+        </section>
+      </div>
     </div>
   );
 }

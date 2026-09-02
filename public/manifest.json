@@ -1,7 +1,7 @@
 {
   "name": "CampusFlow",
   "short_name": "CampusFlow",
-  "description": "Everything about college. One dashboard.",
+  "description": "Your SRM academics, simplified.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fafafa",

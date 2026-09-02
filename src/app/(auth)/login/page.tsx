@@ -7,35 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { GraduationCap } from "lucide-react";
+import { CampusFlowLogo } from "@/components/brand/campusflow-logo";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, isDemo } = useAuth();
-  const [mode, setMode] = useState<"university" | "manual">("university");
-  const [studentId, setStudentId] = useState("");
-  const [email, setEmail] = useState("");
+  const { signIn } = useAuth();
+  const [netId, setNetId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!netId.trim() || !password.trim()) {
+      setError("Please enter both NetID and password.");
+      return;
+    }
     setLoading(true);
     setError("");
 
-    const result = await signIn(email || studentId, password);
-    if (result.error) {
-      setError(result.error);
-      setLoading(false);
-      return;
-    }
-    router.push("/dashboard");
-  };
-
-  const handleManualContinue = async () => {
-    setLoading(true);
-    const result = await signIn("demo@campusflow.app", "demo");
+    const result = await signIn(netId.trim(), password);
     if (result.error) {
       setError(result.error);
       setLoading(false);
@@ -46,94 +38,58 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center space-y-3">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center space-y-2">
           <div className="flex justify-center">
-            <div className="h-14 w-14 rounded-2xl bg-foreground flex items-center justify-center">
-              <GraduationCap className="h-7 w-7 text-background" />
-            </div>
+            <CampusFlowLogo size={48} />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">CampusFlow</h1>
-          <p className="text-muted-foreground">Everything about college. One dashboard.</p>
+          <h1 className="text-2xl font-bold tracking-tight">CampusFlow</h1>
+          <p className="text-sm text-muted-foreground">Your SRM academics, simplified.</p>
         </div>
 
         <Card className="border-border">
-          <CardContent className="p-6">
-            <div className="flex rounded-lg bg-muted p-1 mb-6">
-              <button
-                onClick={() => setMode("university")}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-                  mode === "university" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
-                }`}
-              >
-                University Login
-              </button>
-              <button
-                onClick={() => setMode("manual")}
-                className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-                  mode === "manual" ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"
-                }`}
-              >
-                Manual Account
-              </button>
-            </div>
-
-            {mode === "university" ? (
-              <form onSubmit={handleSignIn} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Student ID / Net ID</Label>
-                  <Input
-                    placeholder="e.g. RA2311003010001"
-                    value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="your.email@srmist.edu.in"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    placeholder="SRM portal password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-                {error && <p className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? "Signing in..." : "Sign In"}
-                </Button>
-              </form>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground text-center">
-                  Continue with a manually managed account. You can add your academic data later.
-                </p>
-                <Button className="w-full" onClick={handleManualContinue} disabled={loading}>
-                  {loading ? "Setting up..." : "Continue with Manual Account"}
-                </Button>
+          <CardContent className="p-5">
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Net ID</Label>
+                <Input
+                  placeholder="e.g. dk6154"
+                  value={netId}
+                  onChange={(e) => setNetId(e.target.value)}
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
               </div>
-            )}
-
-            {isDemo && (
-              <div className="mt-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <p className="text-xs text-amber-600 dark:text-amber-400 text-center font-medium">
-                  Demo Mode — All data is fictional
-                </p>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Password</Label>
+                <Input
+                  type="password"
+                  placeholder="SRM portal password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
               </div>
-            )}
+              {error && (
+                <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>
+              )}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Connecting\u2026
+                  </span>
+                ) : (
+                  "Connect SRM"
+                )}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Your academic information belongs to you.
+        <p className="text-center text-[11px] text-muted-foreground leading-relaxed">
+          CampusFlow uses your credentials only to authenticate with SRM.
         </p>
       </div>
     </div>

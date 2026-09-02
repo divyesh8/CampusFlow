@@ -12,6 +12,21 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+function getSystemTheme(): "light" | "dark" {
+  if (typeof window === "undefined") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function resolveTheme(theme: Theme): "light" | "dark" {
+  if (theme === "system") return getSystemTheme();
+  return theme;
+}
+
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "system";
+  return (localStorage.getItem("campusflow_theme") as Theme) || "system";
+}
+
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (!context) throw new Error("useTheme must be used within ThemeProvider");
@@ -19,26 +34,18 @@ export function useTheme() {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("system");
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
-
-  useEffect(() => {
-    const stored = localStorage.getItem("campusflow_theme") as Theme | null;
-    if (stored) setTheme(stored);
-  }, []);
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(() =>
+    resolveTheme(getInitialTheme())
+  );
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
 
-    let resolved: "light" | "dark";
-    if (theme === "system") {
-      resolved = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    } else {
-      resolved = theme;
-    }
-
+    const resolved = resolveTheme(theme);
     root.classList.add(resolved);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs derived state with DOM
     setResolvedTheme(resolved);
     localStorage.setItem("campusflow_theme", theme);
   }, [theme]);
@@ -55,6 +62,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, [theme]);
+
+  const setTheme = (newTheme: Theme) => {
+    setThemeState(newTheme);
+  };
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>

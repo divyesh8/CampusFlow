@@ -11,6 +11,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -22,8 +23,11 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
 
   if (loading || !mounted) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="h-8 w-8 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-muted-foreground">Loading CampusFlow\u2026</p>
+        </div>
       </div>
     );
   }

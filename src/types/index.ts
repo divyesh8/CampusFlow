@@ -21,6 +21,7 @@ export interface StudentProfile {
   universityId: string;
   campusId?: string;
   studentId: string;
+  netId?: string;
   name: string;
   email: string;
   phone?: string;
