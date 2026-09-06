@@ -1,424 +1,143 @@
-import { AcademiaClient } from "./academia-client";
-import { SRM_CONFIG, type SRMLoginResult } from "./academia-config";
+import { randomUUID } from "crypto";
+import * as cheerio from "cheerio";
+import { AcademiaClient, trustedSRMUrl } from "./academia-client";
+import { SRM_CONFIG, type SRMLoginResult, type SRMStudentProfile } from "./academia-config";
 import { decodeAcademiaPage } from "./decode-academia-page";
-
-const MAX_TERMINATE_RETRIES = 2;
-const OVERALL_TIMEOUT = 30_000;
-
-export type AuthStage =
-  | "AUTH_REQUEST_START"
-  | "SIGNIN_POST_START"
-  | "SIGNIN_POST_COMPLETE"
-  | "CONCURRENT_SESSION_DETECTED"
-  | "CONCURRENT_SESSION_TERMINATED"
-  | "OAUTH_REDIRECT_START"
-  | "OAUTH_REDIRECT_1"
-  | "OAUTH_REDIRECT_2"
-  | "OAUTH_REDIRECT_3"
-  | "OAUTH_COMPLETE"
-  | "SESSION_VERIFY_START"
-  | "SESSION_VERIFY_COMPLETE"
-  | "PROFILE_FETCH_START"
-  | "PROFILE_FETCH_COMPLETE"
-  | "PROFILE_PARSE_COMPLETE"
-  | "AUTH_COMPLETE";
+import { parseStudentProfile } from "./parsers/profile-parser";
+import { classifySRMError } from "./error-codes";
 
 export interface AuthStageLog {
-  stage: AuthStage;
+  stage: string;
   duration: number;
   httpStatus?: number;
   cookieNames?: string[];
-  redirectHost?: string;
   error?: string;
 }
 
 export class SRMLoginService {
-  private client: AcademiaClient;
+  private client = new AcademiaClient();
   private stageLogs: AuthStageLog[] = [];
-  private overallStart: number;
+  private profile: SRMStudentProfile | null = null;
+  constructor(private requestId: string = randomUUID()) {}
 
-  constructor() {
-    this.client = new AcademiaClient();
-    this.overallStart = Date.now();
+  getStageLogs() { return [...this.stageLogs]; }
+  getClient() { return this.client; }
+  getProfile() { return this.profile; }
+
+  private log(stage: string, start = Date.now(), httpStatus?: number, error?: string) {
+    const record = { stage, duration: Date.now() - start, httpStatus, error };
+    this.stageLogs.push(record);
+    console.log(JSON.stringify({ requestId: this.requestId, ...record }));
   }
 
-  getStageLogs(): AuthStageLog[] {
-    return [...this.stageLogs];
-  }
-
-  private logStage(
-    stage: AuthStage,
-    startMs: number,
-    extra?: { httpStatus?: number; error?: string; redirectHost?: string }
-  ) {
-    const duration = Date.now() - startMs;
-    const log: AuthStageLog = {
-      stage,
-      duration,
-      httpStatus: extra?.httpStatus,
-      cookieNames: this.client.getCookieNames(),
-      redirectHost: extra?.redirectHost,
-      error: extra?.error,
+  async inspectLoginPage() {
+    const start = Date.now();
+    const landing = await this.client.get(SRM_CONFIG.baseUrl);
+    if (landing.status !== 200) throw new Error("SRM_SERVER_REJECTED");
+    const $ = cheerio.load(landing.text);
+    const iframe = $("iframe[src]").toArray().map((element) => $(element).attr("src"))
+      .find((src) => src?.includes("/accounts/"));
+    const page = iframe ? await this.client.get(trustedSRMUrl(iframe).href) : landing;
+    if (page.status !== 200) throw new Error("SRM_SERVER_REJECTED");
+    const form = cheerio.load(page.text);
+    const inputNames = form("input").toArray().map((element) =>
+      form(element).attr("name") || form(element).attr("id") || "").filter(Boolean);
+    const loginFormDetected = form('input[type="password"]').length > 0;
+    this.log("SRM_LOGIN_PAGE_FETCHED", start, page.status);
+    if (!loginFormDetected) throw new Error("SRM_LOGIN_FORM_CHANGED");
+    return {
+      academiaReachable: true, loginPageReceived: true, loginFormDetected,
+      initialCookiesReceived: this.client.getCookieNames().length > 0,
+      cookieNames: this.client.getCookieNames(), inputNames,
+      contentType: page.headers.get("content-type"),
+      // Presence of a hidden CAPTCHA template does not mean CAPTCHA is required.
+      captchaInputPresent: inputNames.some((name) => /captcha/i.test(name)),
     };
-    this.stageLogs.push(log);
-    console.log(
-      `[SRM Auth] ${stage} — ${duration}ms${extra?.httpStatus ? ` — ${extra.httpStatus}` : ""}${extra?.error ? ` — ${extra.error}` : ""}`
-    );
   }
 
-  async login(
-    username: string,
-    password: string,
-    cdigest?: string,
-    captcha?: string
-  ): Promise<SRMLoginResult> {
-    return this.loginWithRetry(username, password, cdigest, captcha, 0);
-  }
-
-  private async loginWithRetry(
-    username: string,
-    password: string,
-    cdigest: string | undefined,
-    captcha: string | undefined,
-    retryCount: number
-  ): Promise<SRMLoginResult> {
-    const overallElapsed = Date.now() - this.overallStart;
-    if (overallElapsed > OVERALL_TIMEOUT) {
-      return {
-        success: false,
-        cookies: {},
-        error: "SRM authentication timed out. Please try again.",
-        status: 408,
-      };
-    }
-
-    if (retryCount > MAX_TERMINATE_RETRIES) {
-      return {
-        success: false,
-        cookies: {},
-        error:
-          "Unable to clear existing SRM session. Please log out of Academia and try again.",
-        status: 409,
-      };
-    }
-
-    const fullUsername = username.includes("@")
-      ? username
-      : `${username}@srmist.edu.in`;
-
-    const formData: Record<string, string> = {
-      username: fullUsername,
-      password,
-      client_portal: "true",
-      portal: SRM_CONFIG.portalId,
-      servicename: SRM_CONFIG.serviceName,
-      serviceurl: `${SRM_CONFIG.baseUrl}/`,
-      is_ajax: "true",
-      grant_type: "password",
-      service_language: "en",
-    };
-
-    if (cdigest) {
-      formData.cdigest = cdigest;
-    }
-    if (captcha) {
-      formData.captcha = captcha;
-    }
-
-    let stageStart = Date.now();
-    this.logStage("AUTH_REQUEST_START", stageStart);
-
-    stageStart = Date.now();
-    this.logStage("SIGNIN_POST_START", stageStart);
-
-    let response;
+  async login(username: string, password: string, cdigest?: string, captcha?: string): Promise<SRMLoginResult> {
+    this.log("SRM_AUTH_START");
     try {
-      response = await this.client.post(
-        SRM_CONFIG.signInUrl,
-        formData,
-        {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": SRM_CONFIG.browserHeaders["User-Agent"],
-          Origin: SRM_CONFIG.baseUrl,
-          Referer: `${SRM_CONFIG.baseUrl}/`,
-        },
-        false
-      );
-    } catch (err) {
-      this.logStage("SIGNIN_POST_COMPLETE", stageStart, {
-        error: err instanceof Error ? err.message : "unknown",
-      });
-      return {
-        success: false,
-        cookies: {},
-        error:
-          err instanceof Error && err.message === "SRM_TIMEOUT"
-            ? "SRM did not respond in time. Please try again."
-            : "Failed to connect to SRM server.",
-        status: 503,
-      };
+      if (!cdigest) await this.inspectLoginPage();
+      return await this.submit(username, password, cdigest, captcha, 0);
+    } catch (error) {
+      const code = classifySRMError(error);
+      this.log(code, Date.now(), undefined, code);
+      return { success: false, cookies: this.client.getCookies(), error: code };
     }
+  }
 
-    this.logStage("SIGNIN_POST_COMPLETE", stageStart, {
-      httpStatus: response.status,
-    });
-
-    const body = response.text;
-    const lowered = body.toLowerCase();
-
-    if (lowered.includes("concurrent") || lowered.includes("terminate")) {
-      this.logStage("CONCURRENT_SESSION_DETECTED", Date.now());
-
-      if (retryCount >= MAX_TERMINATE_RETRIES) {
-        return {
-          success: false,
-          cookies: {},
-          error:
-            "Unable to clear existing SRM session. Please log out of Academia and try again.",
-          status: 409,
-        };
-      }
-
-      const forceLogoutResult = await this.forceLogout(body);
-      if (forceLogoutResult) {
-        this.logStage("CONCURRENT_SESSION_TERMINATED", Date.now());
-        return this.loginWithRetry(
-          username,
-          password,
-          cdigest,
-          captcha,
-          retryCount + 1
-        );
-      }
-
-      return {
-        success: false,
-        cookies: {},
-        error: "Session conflict. Please try again.",
-        status: 401,
-      };
+  private async submit(username: string, password: string, cdigest: string | undefined,
+    captcha: string | undefined, retries: number): Promise<SRMLoginResult> {
+    const formData = {
+      username: username.includes("@") ? username : `${username}@srmist.edu.in`,
+      password, client_portal: "true", portal: SRM_CONFIG.portalId,
+      servicename: SRM_CONFIG.serviceName, serviceurl: `${SRM_CONFIG.baseUrl}/`,
+      is_ajax: "true", grant_type: "password", service_language: "en",
+      ...(cdigest ? { cdigest } : {}), ...(captcha ? { captcha } : {}),
+    };
+    const start = Date.now();
+    const response = await this.client.post(SRM_CONFIG.signInUrl, formData, {
+      Origin: SRM_CONFIG.baseUrl, "Content-Type": "application/x-www-form-urlencoded",
+    }, false);
+    this.log("SRM_CREDENTIALS_SUBMITTED", start, response.status);
+    if (response.status >= 500 || response.status === 429 || response.status === 403) {
+      throw new Error("SRM_SERVER_REJECTED");
     }
+    if (response.status >= 300 && response.status < 400) throw new Error("SRM_REDIRECT_UNEXPECTED");
 
     let payload: Record<string, unknown>;
-    try {
-      payload = JSON.parse(body);
-    } catch {
-      return {
-        success: false,
-        cookies: {},
-        error: "Unexpected response from SRM server",
-        status: response.status,
-      };
-    }
-
-    const error = payload.error as Record<string, string> | undefined;
-    if (error) {
-      return {
-        success: false,
-        cookies: {},
-        error: error.msg || "Authentication failed",
-        status: 401,
-      };
-    }
-
-    if (
-      payload.status === "fail" &&
-      (payload.code === "HIP_REQUIRED" || payload.code === "HIP_FAILED")
-    ) {
-      const captchaUrl = payload.cdigest
-        ? SRM_CONFIG.captchaUrl.replace(
-            "{cdigest}",
-            payload.cdigest as string
-          )
-        : undefined;
-
-      return {
-        success: false,
-        cookies: {},
-        requiresCaptcha: true,
-        captchaImage: captchaUrl,
-        captchaDigest: payload.cdigest as string,
-        error: (payload.message as string) || "Verification required",
-        status: 401,
-      };
-    }
-
-    const inner = payload.data as Record<string, string> | undefined;
-    if (!inner) {
-      return {
-        success: false,
-        cookies: {},
-        error: (payload.message as string) || "Invalid credentials",
-        status: 401,
-      };
-    }
-
-    const accessToken = inner.access_token;
-    const redirectUrl = inner.oauthorize_uri;
-
-    if (!accessToken || !redirectUrl) {
-      return {
-        success: false,
-        cookies: {},
-        error: "Missing tokens in SRM response",
-        status: 401,
-      };
-    }
-
-    stageStart = Date.now();
-    this.logStage("OAUTH_REDIRECT_START", stageStart);
-
-    try {
-      const oauthUrl = `${redirectUrl}&access_token=${accessToken}`;
-      const oauthResult = await this.client.followRedirectChain(oauthUrl, "GET");
-
-      const finalHostname = new URL(oauthResult.finalUrl).hostname;
-      this.logStage("OAUTH_COMPLETE", stageStart, {
-        httpStatus: oauthResult.status,
-        redirectHost: finalHostname,
+    try { payload = JSON.parse(response.text); }
+    catch {
+      // A termination template on the ordinary login page is not a conflict.
+      const $ = cheerio.load(response.text);
+      const form = $('form[action*="terminate"]').first();
+      if (!form.length) throw new Error("SRM_LOGIN_FORM_CHANGED");
+      this.log("SRM_SESSION_CONFLICT");
+      if (retries >= 1) throw new Error("SRM_SESSION_CONFLICT");
+      const values: Record<string, string> = {};
+      form.find("input[name]").each((_, element) => {
+        values[$(element).attr("name")!] = $(element).attr("value") ?? "";
       });
-    } catch (err) {
-      this.logStage("OAUTH_COMPLETE", stageStart, {
-        error: err instanceof Error ? err.message : "unknown",
-      });
-      return {
-        success: false,
-        cookies: {},
-        error:
-          err instanceof Error && err.message === "SRM_TIMEOUT"
-            ? "SRM OAuth timed out. Please try again."
-            : "OAuth redirect failed. Please try again.",
-        status: 502,
-      };
+      const result = await this.client.post(trustedSRMUrl(form.attr("action")!).href, values);
+      if (result.status !== 200) throw new Error("SRM_SESSION_CONFLICT");
+      return this.submit(username, password, cdigest, captcha, retries + 1);
     }
-
-    stageStart = Date.now();
-    this.logStage("SESSION_VERIFY_START", stageStart);
-
-    const cookies = this.client.getCookies();
-    const hasSessionCookie =
-      cookies.JSESSIONID ||
-      cookies._iamadt_client_10002227248 ||
-      cookies._iambdt_client_10002227248;
-
-    if (!hasSessionCookie) {
-      this.logStage("SESSION_VERIFY_COMPLETE", stageStart, {
-        error: "no_session_cookies",
-      });
-      return {
-        success: false,
-        cookies,
-        error: "Session failed: no session cookies established",
-        status: 401,
-      };
-    }
-
-    try {
-      const verifyClient = new AcademiaClient();
-      verifyClient.setCookies(cookies);
-      const verifyResponse = await verifyClient.get(SRM_CONFIG.coursePage, {
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      });
-
-      if (verifyResponse.status !== 200) {
-        this.logStage("SESSION_VERIFY_COMPLETE", stageStart, {
-          httpStatus: verifyResponse.status,
-          error: "verification_failed",
-        });
-        return {
-          success: false,
-          cookies,
-          error: "Session verification failed. Please try again.",
-          status: 401,
-        };
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("SRM_LOGIN_FORM_CHANGED");
+    if (payload.code === "HIP_REQUIRED" || payload.code === "HIP_FAILED") {
+      if (typeof payload.cdigest !== "string" || !/^[a-zA-Z0-9_-]{1,512}$/.test(payload.cdigest)) {
+        throw new Error("SRM_SCHEMA_CHANGED");
       }
-
-      const decoded = decodeAcademiaPage(verifyResponse.text);
-      if (decoded.error) {
-        this.logStage("SESSION_VERIFY_COMPLETE", stageStart, {
-          httpStatus: verifyResponse.status,
-          error: decoded.error,
-        });
-        return {
-          success: false,
-          cookies,
-          error:
-            decoded.error === "SRM_SESSION_EXPIRED"
-              ? "SRM session expired. Please try again."
-              : "Could not verify SRM session.",
-          status: 401,
-        };
-      }
-
-      this.logStage("SESSION_VERIFY_COMPLETE", stageStart, {
-        httpStatus: verifyResponse.status,
-      });
-    } catch (err) {
-      this.logStage("SESSION_VERIFY_COMPLETE", stageStart, {
-        error: err instanceof Error ? err.message : "unknown",
-      });
-      return {
-        success: false,
-        cookies,
-        error: "Session verification failed. Please try again.",
-        status: 401,
-      };
+      const code = payload.code === "HIP_FAILED" ? "SRM_CAPTCHA_FAILED" : "SRM_CAPTCHA_REQUIRED";
+      this.log(code);
+      return { success: false, cookies: this.client.getCookies(), requiresCaptcha: true,
+        captchaDigest: payload.cdigest, captchaImage: SRM_CONFIG.captchaUrl.replace("{cdigest}", payload.cdigest),
+        error: code, status: 401 };
     }
-
-    this.logStage("AUTH_COMPLETE", Date.now());
-
-    return {
-      success: true,
-      cookies,
-      status: 200,
-    };
-  }
-
-  private async forceLogout(html: string): Promise<boolean> {
-    const formMatch = html.match(
-      /<form[^>]*action="([^"]*)"[^>]*>([\s\S]*?)<\/form>/i
-    );
-    if (!formMatch) return false;
-
-    const action = formMatch[1];
-    const formHtml = formMatch[2];
-
-    const formData: Record<string, string> = {};
-    const inputMatches = formHtml.matchAll(
-      /<input[^>]*name="([^"]*)"[^>]*value="([^"]*)"[^>]*>/gi
-    );
-    for (const match of inputMatches) {
-      formData[match[1]] = match[2];
+    if (payload.error || payload.status === "fail") throw new Error("SRM_INVALID_CREDENTIALS");
+    const inner = payload.data as Record<string, unknown> | undefined;
+    if (!inner || typeof inner.access_token !== "string" || typeof inner.oauthorize_uri !== "string") {
+      throw new Error("SRM_LOGIN_FORM_CHANGED");
     }
+    const oauth = trustedSRMUrl(inner.oauthorize_uri);
+    oauth.searchParams.set("access_token", inner.access_token);
+    const redirect = await this.client.followRedirectChain(oauth.href);
+    this.log("SRM_REDIRECT_RECEIVED", start, redirect.status);
+    if (redirect.status !== 200) throw new Error("SRM_SERVER_REJECTED");
 
-    const url = action.startsWith("http")
-      ? action
-      : `${SRM_CONFIG.baseUrl}${action}`;
-
-    try {
-      const response = await this.client.post(url, formData, {
-        "Content-Type": "application/x-www-form-urlencoded",
-      });
-      return response.status === 200;
-    } catch {
-      return false;
-    }
-  }
-
-  async logout(cookies: Record<string, string>): Promise<boolean> {
-    const client = new AcademiaClient();
-    client.setCookies(cookies);
-    try {
-      const response = await client.get(SRM_CONFIG.logoutUrl);
-      return response.status === 200 || response.status === 302;
-    } catch {
-      return false;
-    }
-  }
-
-  getClient(): AcademiaClient {
-    return this.client;
+    this.log("SRM_PROFILE_FETCH_START");
+    const page = await this.client.get(SRM_CONFIG.sessionVerifyPage);
+    if (page.status !== 200) throw new Error("SRM_SERVER_REJECTED");
+    const decoded = decodeAcademiaPage(page.text);
+    if (decoded.error) throw new Error(decoded.error);
+    const profile = parseStudentProfile(decoded.html);
+    // Both identity fields are required; a 200 page or session cookie is insufficient.
+    if (!profile.name || !/^RA\d{13}$/.test(profile.regNumber)) throw new Error("SRM_PROFILE_PARSE_FAILED");
+    this.profile = profile;
+    this.log("SRM_AUTHENTICATED_PAGE_DETECTED");
+    this.log("SRM_PROFILE_FETCH_SUCCESS");
+    this.log("SRM_AUTH_SUCCESS", start);
+    return { success: true, cookies: this.client.getCookies(), status: 200 };
   }
 }
+

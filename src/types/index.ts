@@ -25,10 +25,11 @@ export interface StudentProfile {
   name: string;
   email: string;
   phone?: string;
-  program: string;
-  department: string;
-  year: number;
-  semester: number;
+  program: string | null;
+  department: string | null;
+  year: number | null;
+  semester: number | null;
+  batch?: string | null;
   section?: string;
   attendanceThreshold: number;
   avatarUrl?: string;

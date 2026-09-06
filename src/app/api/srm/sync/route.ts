@@ -1,67 +1,17 @@
 import { NextResponse } from "next/server";
-import {
-  requireSession,
-  getSRMCookies,
-  updateSession,
-} from "@/server/srm/session-manager";
-import { syncAllData } from "@/server/srm/academia-service";
-
+import { requireSession } from "@/server/srm/session-manager";
+import { synchronizeStudent } from "@/server/srm/sync-service";
+import { checkOrigin, rateLimit, routeError } from "@/server/srm/request-security";
 export const runtime = "nodejs";
-export const maxDuration = 30;
-
-export async function POST() {
+export const maxDuration = 60;
+export async function POST(request: Request) {
   try {
+    checkOrigin(request);
     const session = await requireSession();
-    const srmCookies = await getSRMCookies();
-
-    if (!srmCookies) {
-      return NextResponse.json(
-        {
-          code: "SRM_SESSION_EXPIRED",
-          error: "SRM connection expired. Please reconnect.",
-        },
-        { status: 401 }
-      );
-    }
-
-    console.log("[SRM Sync] Starting sync for:", session.netId);
-
-    const data = await syncAllData(srmCookies);
-
-    const syncResult = {
-      profile: !!session.studentProfile.name,
-      attendance: data.attendance.length,
-      marks: data.marks.length,
-      courses: data.courses.length,
-    };
-
-    console.log("[SRM Sync] Sync completed:", syncResult);
-
-    await updateSession({
-      lastSyncAt: new Date().toISOString(),
-    });
-
-    return NextResponse.json({
-      success: true,
-      syncedAt: new Date().toISOString(),
-      syncedItems: syncResult,
-      data: {
-        attendance: data.attendance,
-        marks: data.marks,
-        courses: data.courses,
-      },
-    });
-  } catch (error) {
-    if (error instanceof Error && error.message === "UNAUTHORIZED") {
-      return NextResponse.json(
-        { code: "SRM_SESSION_EXPIRED", error: "Session expired. Please reconnect." },
-        { status: 401 }
-      );
-    }
-    console.error("[SRM Sync] Error:", error);
-    return NextResponse.json(
-      { error: "Sync failed. Please try again." },
-      { status: 500 }
-    );
-  }
+    await rateLimit(`sync:${session.userId}`, 5);
+    const result = await synchronizeStudent();
+    return NextResponse.json(result, { status: result.srmStatus === "expired" ? 401 : result.status === "failed" ? 502 : 200,
+      headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return routeError(error); }
 }
+

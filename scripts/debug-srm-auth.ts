@@ -102,7 +102,7 @@ async function main() {
 
   let profileResponse;
   try {
-    profileResponse = await client.get(SRM_CONFIG.coursePage, {
+    profileResponse = await client.get(SRM_CONFIG.sessionVerifyPage, {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
     });
@@ -151,7 +151,7 @@ async function main() {
   console.log(`${pad("Register parsed")} ${!!profile.regNumber} ${profile.regNumber ? "(yes)" : "(no)"}`);
   console.log(`${pad("Program found")} ${!!profile.program}`);
   console.log(`${pad("Department found")} ${!!profile.department}`);
-  console.log(`${pad("Semester found")} ${profile.semester > 0} (${profile.semester})`);
+  console.log(`${pad("Semester found")} ${profile.semester !== null && profile.semester > 0} (${profile.semester ?? "unavailable"})`);
   console.log(`${pad("Section found")} ${!!profile.section}`);
 
   const hasIdentity = profile.name || profile.regNumber;
@@ -162,7 +162,7 @@ async function main() {
   const attendanceStart = Date.now();
   let attendanceResponse;
   try {
-    attendanceResponse = await client.get(SRM_CONFIG.attendancePage, {
+    attendanceResponse = await client.get(SRM_CONFIG.sessionVerifyPage, {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
     });

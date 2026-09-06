@@ -58,10 +58,6 @@ export function validateDecodedHtml(html: string): {
   valid: boolean;
   error?: string;
 } {
-  if (!html || html.trim().length < 100) {
-    return { valid: false, error: "SRM_SCHEMA_CHANGED" };
-  }
-
   const lower = html.toLowerCase();
 
   for (const indicator of LOGIN_PAGE_INDICATORS) {
@@ -78,6 +74,10 @@ export function validateDecodedHtml(html: string): {
     if (lower.includes(indicator)) {
       return { valid: false, error: "SRM_SESSION_EXPIRED" };
     }
+  }
+
+  if (!html || html.trim().length < 100) {
+    return { valid: false, error: "SRM_SCHEMA_CHANGED" };
   }
 
   const hasTable = lower.includes("<table");

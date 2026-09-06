@@ -9,13 +9,13 @@ CampusFlow is a mobile-first academic dashboard for SRM Institute of Science and
 | # | Feature | Status |
 |---|---------|--------|
 | 1 | Landing page with value proposition | Implemented |
-| 2 | Login with NetID and password | Partially implemented (no real SRM auth yet) |
+| 2 | Login with NetID and password | Implemented; live-account verification required |
 | 3 | Session management via httpOnly cookies | Implemented |
-| 4 | Middleware-based route protection | Implemented |
-| 5 | Dashboard with greeting, sync status, and quick metrics | Partially implemented (requires SRM data) |
-| 6 | Attendance tracking with can-bunk / must-attend calculations | Implemented (UI + calculation logic; needs SRM data) |
-| 7 | Marks tracking with subject-wise grouping | Implemented (UI + repository layer; needs SRM data) |
-| 8 | Weekly timetable view | Partially implemented (UI placeholder; needs SRM data) |
+| 4 | Proxy-based route protection | Implemented |
+| 5 | Dashboard with greeting, sync status, and quick metrics | Implemented; metrics are empty until the first sync |
+| 6 | Attendance tracking with can-bunk / must-attend calculations | Implemented with SRM cumulative snapshots |
+| 7 | Marks tracking with subject-wise assessment records | Implemented with SRM data |
+| 8 | Course and slot view | Implemented; weekday/time requires a verified SRM timetable mapping |
 | 9 | Exam schedule with preparation status | Partially implemented (UI placeholder; needs SRM data) |
 | 10 | Assignment tracker with priority, due dates, and status toggle | Implemented (demo data) |
 | 11 | Academic calendar (month and agenda views) | Implemented (demo data) |
@@ -68,7 +68,7 @@ campusflow/
 | State Management | Zustand 5 |
 | Forms / Validation | Zod 4 |
 | Backend / Database | Supabase (PostgreSQL, Auth, RLS) |
-| Session Management | httpOnly cookies (base64 encoded JSON) |
+| Session Management | Hashed opaque httpOnly cookie + encrypted Supabase session state |
 | Testing | Vitest 4 |
 | Language | TypeScript 5 |
 
@@ -133,7 +133,7 @@ npm run test        # Run all tests
 npm run test:watch  # Watch mode
 ```
 
-57 unit tests cover attendance calculations, marks aggregation, exam filtering, assignment sorting, date utilities, and academic standing computations.
+67 unit tests cover calculations, parser fixtures, normalized SRM data, migration persistence, duplicate prevention, student isolation, and rate limiting.
 
 ### Type Checking
 
@@ -153,17 +153,19 @@ CampusFlow uses Supabase for:
 
 - **PostgreSQL database**: 25 tables with proper foreign keys, indexes, and constraints
 - **Row Level Security**: All private tables are protected so users can only access their own data
-- **Server-side auth**: Middleware verifies sessions on every request
+- **Server-side auth**: Next.js Proxy protects page routes; API routes verify the opaque session server-side
 - **Realtime** (future): For live attendance and marks updates
 
 The `SUPABASE_SERVICE_ROLE_KEY` must never be prefixed with `NEXT_PUBLIC_`. It is only used in server-side code.
 
 ## Database Migrations
 
-Two migration files in `supabase/migrations/`:
+Four migration files in `supabase/migrations/`:
 
 1. **001_initial_schema.sql** -- Creates all 25 tables, indexes, and `updated_at` triggers
 2. **002_rls_policies.sql** -- Defines RLS policies for all tables
+3. **003_srm_sessions.sql** -- Encrypted server-side SRM sessions and CAPTCHA challenges
+4. **004_srm_pipeline.sql** -- Idempotent SRM component persistence, sync logs, rate limiting, and student isolation
 
 Tables: `universities`, `profiles`, `campuses`, `university_connections`, `academic_years`, `semesters`, `subjects`, `enrollments`, `attendance_records`, `attendance_snapshots`, `assessments`, `marks`, `timetables`, `timetable_entries`, `timetable_overrides`, `academic_events`, `exams`, `assignments`, `clubs`, `campus_events`, `event_registrations`, `mess_menus`, `notifications`, `sync_logs`, `user_preferences`
 
@@ -183,7 +185,7 @@ CampusFlow supports multiple university backends through the `UniversityProvider
 
 | Provider | Status | Notes |
 |----------|--------|-------|
-| **SRM** | Partially implemented | Auth flow works; attendance/marks/timetable sync is a no-op (returns empty arrays). Requires reverse-engineering SRM Academia portal endpoints. |
+| **SRM** | Implemented pending live verification | Server-side login, CAPTCHA continuation, encrypted sessions, validated parsing, idempotent sync, and profile/attendance/marks/course reads. Real credentials and Supabase deployment are required for live verification. |
 | **Manual** | Implemented | Students enter data directly into Supabase. Full CRUD via repository layer. |
 | **Mock (Demo)** | Implemented | Hardcoded demo data used when `NEXT_PUBLIC_DEMO_MODE=true`. Provides realistic sample attendance, marks, timetable, exams, assignments, events, clubs, mess, and notifications. |
 
@@ -195,7 +197,7 @@ Set `NEXT_PUBLIC_DEMO_MODE=true` in `.env.local` to run without Supabase or SRM 
 
 ## Testing
 
-57 unit tests in `src/utils/calculations.test.ts` covering:
+67 unit tests cover calculations, parser fixtures, normalized SRM data, migration persistence, duplicate prevention, student isolation, and rate limiting.
 
 - Attendance percentage calculation (edge cases, rounding)
 - Attendance status classification (safe/warning/critical)
@@ -235,7 +237,7 @@ Or connect your Git repository to Vercel for automatic deployments.
 
 ## Security
 
-- **Middleware protection**: All non-public routes require a valid session (Supabase auth or CampusFlow `cf_session` cookie)
+- **Proxy protection**: All non-public routes require a valid session (Supabase auth or CampusFlow `cf_session` cookie)
 - **Server-side auth verification**: `getSession()` and `requireSession()` verify credentials on every server action and API route
 - **httpOnly cookies**: Session data is stored in httpOnly, secure, SameSite=Lax cookies
 - **RLS enforcement**: Database-level access control prevents cross-user data access
@@ -245,9 +247,9 @@ Or connect your Git repository to Vercel for automatic deployments.
 
 ## Known Limitations
 
-- **SRM integration not complete**: Authentication accepts credentials but does not actually communicate with SRM Academia. Attendance, marks, timetable, and exam data return empty arrays.
+- **Live SRM verification pending**: Local public reachability was verified, but no SRM credentials or deployed Supabase configuration are available in this workspace. Authentication and sync must still be verified against a real account.
 - **Demo data only for most features**: Assignments, calendar, events, clubs, mess, analytics, and notifications use hardcoded demo data.
-- **Session stored in cookie**: The `cf_session` cookie stores base64-encoded JSON. This is not encrypted and should be replaced with a server-side session store for production.
+- **Course schedule mapping**: SRM course pages currently expose course/slot/room information; weekday and clock times are not invented until a verified timetable mapping is available.
 - **No push notifications**: Browser push notifications are not implemented. The notification bell shows demo data only.
 - **PWA icons missing**: manifest.json references icons that do not exist in `public/`.
 - **No offline support**: No service worker or caching strategy.
@@ -257,7 +259,7 @@ Or connect your Git repository to Vercel for automatic deployments.
 
 ## Future Roadmap
 
-- Complete SRM Academia integration (reverse-engineer login, CAPTCHA handling, data scraping)
+- Verify SRM Academia integration with a real account locally and on the deployed runtime
 - Real-time sync with SRM portal (attendance, marks, timetable, exams)
 - Server-side session store (replace cookie-based sessions)
 - Push notifications for attendance alerts and exam reminders

@@ -1,46 +1,14 @@
 "use client";
-
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ClipboardCheck, AlertTriangle } from "lucide-react";
-import Link from "next/link";
+import { useSrmData, latestAttendance } from "@/hooks/use-srm-data";
 
 export default function AttendancePage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold">Attendance</h1>
-        <p className="text-xs text-muted-foreground mt-1">Track and manage your attendance across all subjects</p>
-      </div>
-
-      <Card className="border-amber-200 dark:border-amber-900 bg-amber-500/5">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold">SRM Integration Pending</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Real attendance data from SRM Academia will appear here once the integration is complete.
-              </p>
-              <Link href="/settings">
-                <Button variant="ghost" size="sm" className="mt-2 text-xs px-0">
-                  Connect SRM account
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border">
-        <CardContent className="py-12 text-center">
-          <ClipboardCheck className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium">No attendance data yet</p>
-          <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-            Your attendance from SRM Academia will appear here after you connect your account and sync.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const { data, loading, error } = useSrmData();
+  const latest = data ? latestAttendance(data) : new Map();
+  return <div className="space-y-6"><div><h1 className="text-xl font-bold">Attendance</h1><p className="text-xs text-muted-foreground mt-1">Latest SRM attendance snapshots</p></div>
+    {loading && <p className="text-sm text-muted-foreground">Loading synchronized data…</p>}
+    {error && <Card><CardContent className="p-4 text-sm text-muted-foreground">{error} Sync after reconnecting SRM.</CardContent></Card>}
+    {!loading && !error && data && latest.size === 0 && <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">No attendance has been published by SRM yet.</CardContent></Card>}
+    <div className="space-y-3">{data && [...latest.entries()].map(([id, row]) => { const subject = data.subjects.find((item) => item.id === id); return <Card key={id}><CardContent className="p-4"><div className="flex justify-between gap-3"><div><p className="font-medium">{subject?.name || "Subject"}</p><p className="text-xs text-muted-foreground">{subject?.code || ""} · {row.attended}/{row.conducted} attended</p></div><p className="text-lg font-bold">{Number(row.percentage).toFixed(1)}%</p></div></CardContent></Card>; })}</div>
+  </div>;
 }

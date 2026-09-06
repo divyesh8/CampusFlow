@@ -5,222 +5,70 @@ import { decodeAcademiaPage } from "./decode-academia-page";
 import { parseStudentProfile } from "./parsers/profile-parser";
 import { parseAttendance, parseMarks } from "./parsers/attendance-parser";
 import { parseCourses } from "./parsers/course-parser";
+import { classifySRMError } from "./error-codes";
+import { normalizeAttendance, normalizeMarks, normalizeCourses, profileSchema, type SyncData } from "./normalized-data";
 
-export interface SRMProfileData {
-  name: string;
-  regNumber: string;
-  program: string;
-  department: string;
-  semester: number;
-  section: string;
-  batch: string;
-  mobile: string;
+export async function authenticateWithSRM(netId: string, password: string,
+  existingCookies?: SRMCookieJar, captchaDigest?: string, captchaAnswer?: string, requestId?: string) {
+  const login = new SRMLoginService(requestId);
+  if (existingCookies) login.getClient().setCookies(existingCookies);
+  const result = await login.login(netId, password, captchaDigest, captchaAnswer);
+  if (!result.success) return { ...result, success: false as const, stageLogs: login.getStageLogs() };
+  const profile = profileSchema.safeParse(login.getProfile());
+  if (!profile.success) return { success: false as const, error: "SRM_PROFILE_PARSE_FAILED",
+    cookies: result.cookies, stageLogs: login.getStageLogs() };
+  return { success: true as const, profile: profile.data, cookies: result.cookies, stageLogs: login.getStageLogs() };
 }
 
-export type SRMAuthResult =
-  | {
-      success: true;
-      cookies: SRMCookieJar;
-      profile: SRMProfileData;
-      stageLogs: ReturnType<SRMLoginService["getStageLogs"]>;
-    }
-  | {
-      success: false;
-      error: string;
-      requiresCaptcha?: boolean;
-      captchaImage?: string;
-      captchaDigest?: string;
-      stageLogs: ReturnType<SRMLoginService["getStageLogs"]>;
-    };
+async function page(client: AcademiaClient, url: string) {
+  const response = await client.get(url);
+  if (response.status !== 200) throw new Error("SRM_SERVER_REJECTED");
+  const decoded = decodeAcademiaPage(response.text);
+  if (decoded.error) throw new Error(decoded.error);
+  return decoded.html;
+}
 
-export async function authenticateWithSRM(
-  netId: string,
-  password: string,
-  existingCookies?: SRMCookieJar,
-  captchaDigest?: string,
-  captchaAnswer?: string
-): Promise<SRMAuthResult> {
-  const loginService = new SRMLoginService();
-
-  if (existingCookies) {
-    loginService.getClient().setCookies(existingCookies);
-  }
-
-  const loginResult = await loginService.login(
-    netId,
-    password,
-    captchaDigest,
-    captchaAnswer
-  );
-
-  const stageLogs = loginService.getStageLogs();
-
-  if (!loginResult.success) {
-    if (loginResult.requiresCaptcha) {
-      return {
-        success: false,
-        error: loginResult.error || "Verification required",
-        requiresCaptcha: true,
-        captchaImage: loginResult.captchaImage,
-        captchaDigest: loginResult.captchaDigest,
-        stageLogs,
-      };
-    }
-    return {
-      success: false,
-      error: loginResult.error || "Authentication failed",
-      stageLogs,
-    };
-  }
-
+export async function syncAllData(cookies: SRMCookieJar, expectedRegNumber: string): Promise<SyncData> {
+  const client = new AcademiaClient();
+  client.setCookies(cookies);
+  const data: SyncData = { profile: null, attendance: null, marks: null, courses: null, errors: {}, cookies };
+  const capture = (component: keyof SyncData["errors"], error: unknown) => {
+    data.errors[component] = classifySRMError(error);
+  };
   try {
-    const profile = await fetchStudentProfile(loginResult.cookies);
-    if (!profile) {
-      return {
-        success: false,
-        error: "Connected to SRM, but couldn't read your profile",
-        stageLogs,
-      };
-    }
-
-    return {
-      success: true,
-      cookies: loginResult.cookies,
-      profile,
-      stageLogs,
-    };
-  } catch {
-    return {
-      success: false,
-      error: "Failed to fetch student profile from SRM",
-      stageLogs,
-    };
+    // One authenticated fetch supplies profile, attendance and marks.
+    const html = await page(client, SRM_CONFIG.sessionVerifyPage);
+    const profile = profileSchema.safeParse(parseStudentProfile(html));
+    if (!profile.success) throw new Error("SRM_PROFILE_PARSE_FAILED");
+    if (profile.data.regNumber !== expectedRegNumber) throw new Error("SRM_IDENTITY_MISMATCH");
+    data.profile = profile.data;
+    try { data.attendance = normalizeAttendance(parseAttendance(html).attendance, html); }
+    catch (error) { capture("attendance", error); }
+    try { data.marks = normalizeMarks(parseMarks(html).marks, html); }
+    catch (error) { capture("marks", error); }
+  } catch (error) {
+    capture("profile", error);
+    data.errors.attendance = data.errors.profile;
+    data.errors.marks = data.errors.profile;
   }
+  // Stop upstream work immediately after session expiry or identity inconsistency.
+  if (!data.profile) {
+    data.errors.courses = data.errors.profile;
+    data.cookies = client.getCookies();
+    return data;
+  }
+  try {
+    const navigation = await page(client, SRM_CONFIG.baseUrl);
+    // Use the link advertised by this account, never a guessed academic year.
+    const names = [...navigation.matchAll(/My_Time_Table_\d{4}_\d{2}/g)].map((match) => match[0]);
+    const name = [...new Set(names)].sort().at(-1);
+    if (!name) throw new Error("SRM_SCHEMA_CHANGED");
+    const html = await page(client, `${SRM_CONFIG.baseUrl}/srm_university/academia-academic-services/page/${name}`);
+    const parsed = parseCourses(html);
+    if (parsed.regNumber !== expectedRegNumber) throw new Error("SRM_IDENTITY_MISMATCH");
+    data.courses = normalizeCourses(parsed.courses, html);
+  } catch (error) { capture("courses", error); }
+  data.cookies = client.getCookies();
+  return data;
 }
 
-async function fetchStudentProfile(
-  cookies: SRMCookieJar
-): Promise<SRMProfileData | null> {
-  const client = new AcademiaClient();
-  client.setCookies(cookies);
-
-  const response = await client.get(SRM_CONFIG.coursePage, {
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-  });
-
-  if (response.status !== 200) {
-    console.log(`[SRM Profile] Failed to fetch: HTTP ${response.status}`);
-    return null;
-  }
-
-  const decoded = decodeAcademiaPage(response.text);
-  if (decoded.error) {
-    console.log(`[SRM Profile] Page decode error: ${decoded.error}`);
-    return null;
-  }
-
-  const profile = parseStudentProfile(decoded.html);
-
-  if (!profile.name && !profile.regNumber) {
-    console.log("[SRM Profile] No name or regNumber found in parsed profile");
-    return null;
-  }
-
-  return {
-    name: profile.name,
-    regNumber: profile.regNumber,
-    program: profile.program,
-    department: profile.department,
-    semester: profile.semester,
-    section: profile.section,
-    batch: profile.batch,
-    mobile: profile.mobile,
-  };
-}
-
-export async function fetchAttendance(cookies: SRMCookieJar) {
-  const client = new AcademiaClient();
-  client.setCookies(cookies);
-
-  const response = await client.get(SRM_CONFIG.attendancePage, {
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-  });
-
-  if (response.status !== 200) {
-    return { regNumber: "", attendance: [], error: `HTTP ${response.status}` };
-  }
-
-  const decoded = decodeAcademiaPage(response.text);
-  if (decoded.error) {
-    return { regNumber: "", attendance: [], error: decoded.error };
-  }
-
-  return parseAttendance(decoded.html);
-}
-
-export async function fetchMarks(cookies: SRMCookieJar) {
-  const client = new AcademiaClient();
-  client.setCookies(cookies);
-
-  const response = await client.get(SRM_CONFIG.attendancePage, {
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-  });
-
-  if (response.status !== 200) {
-    return { regNumber: "", marks: [], error: `HTTP ${response.status}` };
-  }
-
-  const decoded = decodeAcademiaPage(response.text);
-  if (decoded.error) {
-    return { regNumber: "", marks: [], error: decoded.error };
-  }
-
-  return parseMarks(decoded.html);
-}
-
-export async function fetchCourses(cookies: SRMCookieJar) {
-  const client = new AcademiaClient();
-  client.setCookies(cookies);
-
-  const response = await client.get(SRM_CONFIG.coursePage, {
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-  });
-
-  if (response.status !== 200) {
-    return { regNumber: "", courses: [], error: `HTTP ${response.status}` };
-  }
-
-  const decoded = decodeAcademiaPage(response.text);
-  if (decoded.error) {
-    return { regNumber: "", courses: [], error: decoded.error };
-  }
-
-  return parseCourses(decoded.html);
-}
-
-export async function syncAllData(cookies: SRMCookieJar) {
-  const [attendance, marks, courses] = await Promise.all([
-    fetchAttendance(cookies),
-    fetchMarks(cookies),
-    fetchCourses(cookies),
-  ]);
-
-  return {
-    attendance: attendance.attendance || [],
-    marks: marks.marks || [],
-    courses: courses.courses || [],
-    errors: {
-      attendance: "error" in attendance ? attendance.error : null,
-      marks: "error" in marks ? marks.error : null,
-      courses: "error" in courses ? courses.error : null,
-    },
-  };
-}

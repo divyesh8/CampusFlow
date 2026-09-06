@@ -81,7 +81,7 @@ export default function ProfilePage() {
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground">Batch</p>
-              <p className="text-sm font-medium">{user?.year || "Not available"}</p>
+              <p className="text-sm font-medium">{user?.batch || "Not available"}</p>
             </div>
           </div>
         </CardContent>

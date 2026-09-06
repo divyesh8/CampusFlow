@@ -96,6 +96,16 @@ export default function LoginPage() {
       challengeId || undefined
     );
 
+    if (result.requiresCaptcha) {
+      setStatus("captcha_required");
+      setError(result.error || "Please try the new CAPTCHA.");
+      setCaptchaImage(result.captchaImage || "");
+      setCaptchaDigest(result.captchaDigest || "");
+      setChallengeId(result.challengeId || "");
+      setCaptchaAnswer("");
+      return;
+    }
+
     if (result.error) {
       setStatus("error");
       setError(result.error);

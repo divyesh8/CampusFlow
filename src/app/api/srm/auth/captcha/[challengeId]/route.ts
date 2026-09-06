@@ -1,65 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getChallenge } from "@/server/srm/captcha-store";
-import { SRM_CONFIG } from "@/server/srm/academia-config";
-
+import { NextResponse } from "next/server";
+import { getChallenge, updateChallengeCookies } from "@/server/srm/captcha-store";
+import { AcademiaClient } from "@/server/srm/academia-client";
+import { rateLimit, routeError, RequestError } from "@/server/srm/request-security";
 export const runtime = "nodejs";
-
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ challengeId: string }> }
-) {
-  const { challengeId } = await params;
-
-  const challenge = getChallenge(challengeId);
-  if (!challenge) {
-    return NextResponse.json(
-      { error: "Challenge expired or not found" },
-      { status: 404 }
-    );
-  }
-
+export async function GET(_request: Request, { params }: { params: Promise<{ challengeId: string }> }) {
   try {
-    const cookieHeader = Object.entries(challenge.srmCookies)
-      .map(([k, v]) => `${k}=${v}`)
-      .join("; ");
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12_000);
-
-    const response = await fetch(challenge.captchaImage, {
-      method: "GET",
-      headers: {
-        ...SRM_CONFIG.browserHeaders,
-        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
-      },
-      signal: controller.signal,
-      redirect: "manual",
-    });
-
-    clearTimeout(timeoutId);
-
-    if (response.status !== 200) {
-      return NextResponse.json(
-        { error: "Failed to fetch CAPTCHA image" },
-        { status: 502 }
-      );
+    const { challengeId } = await params;
+    const challenge = await getChallenge(challengeId);
+    if (!challenge) throw new RequestError(404, "CHALLENGE_EXPIRED", "Verification expired. Please reconnect.");
+    await rateLimit(`captcha-image:${challengeId}`, 10);
+    const client = new AcademiaClient();
+    client.setCookies(challenge.srmCookies);
+    const response = await client.get(challenge.captchaImage);
+    const type = response.headers.get("content-type")?.split(";")[0];
+    if (response.status !== 200 || !type || !["image/png", "image/jpeg", "image/gif", "image/webp"].includes(type)) {
+      throw new Error("SRM_SERVER_REJECTED");
     }
-
-    const imageBuffer = await response.arrayBuffer();
-    const contentType =
-      response.headers.get("content-type") || "image/png";
-
-    return new NextResponse(imageBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-      },
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "Failed to fetch CAPTCHA" },
-      { status: 500 }
-    );
-  }
+    await updateChallengeCookies(challengeId, client.getCookies());
+    return new NextResponse(new Uint8Array(response.bytes), { headers: {
+      "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+    } });
+  } catch (error) { return routeError(error); }
 }
+

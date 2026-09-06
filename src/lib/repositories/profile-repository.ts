@@ -1,7 +1,42 @@
 import { createClient } from "@/lib/supabase/server";
 import type { StudentProfile } from "@/types";
+import { getAdminClient } from "@/lib/supabase/admin";
+import type { ProfileRow } from "@/lib/supabase/database.types";
+import type { NormalizedProfile } from "@/server/srm/normalized-data";
+
+function mapProfile(data: ProfileRow): StudentProfile {
+  return { id: data.id, userId: data.id, universityId: data.university_id ?? "",
+    campusId: data.campus_id ?? undefined, studentId: data.student_id ?? "", netId: data.net_id ?? undefined,
+    name: data.name, email: data.email, phone: data.phone ?? undefined,
+    program: data.program, department: data.department, year: data.year, semester: data.semester,
+    section: data.section ?? undefined, batch: data.batch, attendanceThreshold: data.attendance_threshold ?? 75,
+    onboarded: data.onboarded, createdAt: data.created_at, updatedAt: data.updated_at };
+}
 
 export const profileRepository = {
+  // Internal session resolver: the caller obtains this UUID from a hashed, unexpired session token.
+  async getStored(userId: string) {
+    const { data, error } = await getAdminClient().from("profiles").select("*").eq("id", userId).maybeSingle();
+    if (error) throw new Error("DATABASE_ERROR");
+    return data ? mapProfile(data) : null;
+  },
+  async saveSRM(userId: string, netId: string, email: string, profile: NormalizedProfile) {
+    const admin = getAdminClient();
+    const { data: university, error: universityError } = await admin.from("universities")
+      .select("id").eq("short_name", "SRM").single();
+    if (universityError || !university) throw new Error("DATABASE_ERROR");
+    const { data: existing, error: readError } = await admin.from("profiles").select("student_id,net_id").eq("id", userId).maybeSingle();
+    if (readError) throw new Error("DATABASE_ERROR");
+    if (existing?.net_id && existing.student_id !== profile.regNumber) throw new Error("SRM_IDENTITY_MISMATCH");
+    const { data, error } = await admin.from("profiles").upsert({ id: userId, university_id: university.id,
+      student_id: profile.regNumber, net_id: netId, name: profile.name, email,
+      phone: profile.mobile, program: profile.program, department: profile.department,
+      year: null, semester: profile.semester, section: profile.section, batch: profile.batch,
+      onboarded: true, last_synced_at: new Date().toISOString(),
+    }, { onConflict: "id" }).select("*").single();
+    if (error || !data) throw new Error("DATABASE_ERROR");
+    return mapProfile(data);
+  },
   async get(userId: string): Promise<StudentProfile | null> {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -15,26 +50,7 @@ export const profileRepository = {
 
     if (error || !data) return null;
 
-    return {
-      id: data.id,
-      userId: data.id,
-      universityId: data.university_id || "",
-      campusId: data.campus_id || undefined,
-      studentId: data.student_id || "",
-      name: data.name,
-      email: data.email,
-      phone: data.phone || undefined,
-      program: data.program || "",
-      department: data.department || "",
-      year: data.year || 1,
-      semester: data.semester || 1,
-      section: data.section || undefined,
-      attendanceThreshold: data.attendance_threshold || 75,
-      avatarUrl: data.avatar_url || undefined,
-      onboarded: data.onboarded || false,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-    };
+    return mapProfile(data);
   },
 
   async upsert(profile: Partial<StudentProfile> & { id: string }) {

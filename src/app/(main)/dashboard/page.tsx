@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
+import { useSrmData, latestAttendance } from "@/hooks/use-srm-data";
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -44,10 +45,13 @@ function formatSyncTime(lastSyncAt: string | null): string | null {
 
 export default function DashboardPage() {
   const { user, lastSyncAt } = useAuth();
+  const { data } = useSrmData();
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle");
   const [, setTick] = useState(0);
 
   const syncLabel = formatSyncTime(lastSyncAt);
+  const attendance = data ? [...latestAttendance(data).values()] : [];
+  const overallAttendance = attendance.length ? attendance.reduce((sum, row) => sum + Number(row.percentage), 0) / attendance.length : null;
 
   const tick = useCallback(() => setTick((t) => t + 1), []);
 
@@ -153,7 +157,7 @@ export default function DashboardPage() {
                 <span className="text-[10px] text-muted-foreground font-medium uppercase">Attendance</span>
                 <TrendingUp className="h-3 w-3 text-muted-foreground" />
               </div>
-              <p className="text-xl font-bold">--</p>
+              <p className="text-xl font-bold">{overallAttendance === null ? "—" : `${overallAttendance.toFixed(1)}%`}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 {user?.onboarded ? "Tap to view" : "Connect SRM to view"}
               </p>
@@ -168,7 +172,7 @@ export default function DashboardPage() {
                 <span className="text-[10px] text-muted-foreground font-medium uppercase">Marks</span>
                 <TrendingUp className="h-3 w-3 text-muted-foreground" />
               </div>
-              <p className="text-xl font-bold">--</p>
+              <p className="text-xl font-bold">{data ? data.marks.length : "—"}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 {user?.onboarded ? "Tap to view" : "Connect SRM to view"}
               </p>
@@ -182,7 +186,7 @@ export default function DashboardPage() {
               <span className="text-[10px] text-muted-foreground font-medium uppercase">Classes Today</span>
               <BookOpen className="h-3 w-3 text-muted-foreground" />
             </div>
-            <p className="text-xl font-bold">--</p>
+              <p className="text-xl font-bold">{data ? data.subjects.length : "—"}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {user?.onboarded ? "From timetable" : "Connect SRM to view"}
             </p>

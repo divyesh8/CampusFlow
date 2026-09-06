@@ -17,7 +17,7 @@ interface AuthContextType {
     captchaDigest: string,
     captchaAnswer: string,
     challengeId?: string
-  ) => Promise<{ error?: string }>;
+  ) => Promise<{ error?: string; requiresCaptcha?: boolean; captchaImage?: string; captchaDigest?: string; challengeId?: string }>;
   signOut: () => Promise<void>;
   lastSyncAt: string | null;
 }
@@ -126,6 +126,10 @@ export function useAuthProvider(): AuthContextType {
 
           const data = await res.json();
 
+          if (data.status === "verification_required") {
+            return { error: data.error || "Verification required", requiresCaptcha: true,
+              captchaImage: data.captchaImage, captchaDigest: data.captchaDigest, challengeId: data.challengeId };
+          }
           if (!res.ok || data.error) {
             return { error: data.error || "Authentication failed." };
           }

@@ -5,12 +5,34 @@ export const SRM_CONFIG = {
   signInUrl: "https://academia.srmist.edu.in/accounts/signin.ac",
   logoutUrl:
     "https://academia.srmist.edu.in/accounts/p/10002227248/logout?servicename=ZohoCreator&serviceurl=https://academia.srmist.edu.in/",
-  attendancePage:
+  // Stable authenticated endpoint for session verification
+  // This page exists for all logged-in students regardless of semester/year
+  sessionVerifyPage:
     "https://academia.srmist.edu.in/srm_university/academia-academic-services/page/My_Attendance",
-  coursePage:
-    "https://academia.srmist.edu.in/srm_university/academia-academic-services/page/My_Time_Table_2023_24",
-  calendarPage:
-    "https://academia.srmist.edu.in/srm_university/academia-academic-services/page/Academic_Planner_2025_26_EVEN",
+  // Timetable pages - discovered dynamically after auth
+  timetablePages: [
+    "My_Time_Table_2023_24",
+    "My_Time_Table_2024_25",
+    "My_Time_Table_2025_26",
+    "My_Time_Table_2026_27",
+  ],
+  // Profile page - discovered dynamically
+  profilePages: [
+    "Student_Profile",
+    "My_Profile",
+    "Profile",
+  ],
+  // Calendar / planner pages
+  calendarPages: [
+    "Academic_Planner_2023_24_EVEN",
+    "Academic_Planner_2023_24_ODD",
+    "Academic_Planner_2024_25_EVEN",
+    "Academic_Planner_2024_25_ODD",
+    "Academic_Planner_2025_26_EVEN",
+    "Academic_Planner_2025_26_ODD",
+    "Academic_Planner_2026_27_EVEN",
+    "Academic_Planner_2026_27_ODD",
+  ],
   captchaUrl:
     "https://academia.srmist.edu.in/accounts/p/40-10002227248/webclient/v1/captcha/{cdigest}?darkmode=false",
   browserHeaders: {
@@ -50,12 +72,12 @@ export interface SRMLoginResult {
 export interface SRMStudentProfile {
   name: string;
   regNumber: string;
-  program: string;
-  department: string;
-  semester: number;
-  section: string;
-  batch: string;
-  mobile: string;
+  program: string | null;
+  department: string | null;
+  semester: number | null;
+  section: string | null;
+  batch: string | null;
+  mobile: string | null;
 }
 
 export interface SRMAttendance {

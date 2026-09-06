@@ -1,46 +1,8 @@
 "use client";
-
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { BarChart3, AlertTriangle } from "lucide-react";
-import Link from "next/link";
+import { useSrmData } from "@/hooks/use-srm-data";
 
 export default function MarksPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold">Marks</h1>
-        <p className="text-xs text-muted-foreground mt-1">Track your academic performance</p>
-      </div>
-
-      <Card className="border-amber-200 dark:border-amber-900 bg-amber-500/5">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold">SRM Integration Pending</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Real marks data from SRM Academia will appear here once the integration is complete.
-              </p>
-              <Link href="/settings">
-                <Button variant="ghost" size="sm" className="mt-2 text-xs px-0">
-                  Connect SRM account
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-border">
-        <CardContent className="py-12 text-center">
-          <BarChart3 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-          <p className="text-sm font-medium">No marks data yet</p>
-          <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-            Your internal marks from SRM Academia will appear here after you connect your account and sync.
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const { data, loading, error } = useSrmData();
+  return <div className="space-y-6"><div><h1 className="text-xl font-bold">Marks</h1><p className="text-xs text-muted-foreground mt-1">Assessments published by SRM</p></div>{loading && <p className="text-sm text-muted-foreground">Loading synchronized data…</p>}{error && <Card><CardContent className="p-4 text-sm text-muted-foreground">{error}</CardContent></Card>}{!loading && !error && data && data.marks.length === 0 && <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">No marks have been published by SRM yet.</CardContent></Card>}<div className="space-y-3">{data?.marks.map((mark) => { const subject = Array.isArray(mark.subjects) ? mark.subjects[0] : mark.subjects; const assessment = Array.isArray(mark.assessments) ? mark.assessments[0] : mark.assessments; return <Card key={mark.id}><CardContent className="p-4"><div className="flex justify-between gap-3"><div><p className="font-medium">{subject?.name || "Subject"}</p><p className="text-xs text-muted-foreground">{subject?.code || ""} · {assessment?.name || "Assessment"}</p></div><p className="font-bold">{mark.absent ? "Absent" : `${mark.marks_obtained ?? "—"}/${mark.max_marks}`}</p></div></CardContent></Card>; })}</div></div>;
 }
