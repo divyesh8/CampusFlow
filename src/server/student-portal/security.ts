@@ -32,7 +32,7 @@ export function json(value: unknown, status = 200, diagnostics?: PortalDiagnosti
     "X-CampusFlow-Connector": "student-portal-v1", ...(diagnostics ? { "X-Request-ID": diagnostics.requestId } : {}) } });
 }
 export function failure(error: unknown, diagnostics?: PortalDiagnostics) {
-  const known = isPortalError(error) ? error : new PortalError("PORTAL_UNAVAILABLE");
+  const known = isPortalError(error) ? error : new PortalError("INTERNAL_ERROR", 500);
   diagnostics?.failure(known);
   const response = json({ code: known.code, error: messages[known.code], ...(diagnostics ? { requestId: diagnostics.requestId } : {}) }, known.status, diagnostics);
   if (known.status === 429) response.headers.set("Retry-After", "300");

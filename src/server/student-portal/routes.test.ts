@@ -11,6 +11,7 @@ const request = (body: unknown, origin = "https://example.test") => new Request(
 });
 const valid = () => ({ sessionId: "a".repeat(64), netId: "test01", password: "synthetic-only", captcha: "dummy" });
 beforeEach(() => {
+  cookie.value = "a".repeat(64);
   vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("FRONTEND_ORIGIN", "https://example.test");
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.mocked(login).mockRejectedValue(new PortalError("SESSION_EXPIRED", 401));
@@ -25,6 +26,12 @@ describe("current login routes", () => {
   });
   it("rejects mismatched body/cookie session IDs before login", async () => {
     const r = await POST(request({ ...valid(), sessionId: "b".repeat(64) }));
+    expect(r.status).toBe(401); expect((await r.json()).code).toBe("SESSION_EXPIRED");
+    expect(login).not.toHaveBeenCalled();
+  });
+  it("rejects a missing cookie before submitting credentials", async () => {
+    cookie.value = "";
+    const r = await POST(request(valid()));
     expect(r.status).toBe(401); expect((await r.json()).code).toBe("SESSION_EXPIRED");
     expect(login).not.toHaveBeenCalled();
   });

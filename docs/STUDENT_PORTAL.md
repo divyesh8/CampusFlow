@@ -2,7 +2,7 @@
 
 > Historical first-pass implementation report. For the current configuration,
 > removed legacy authentication code and deployment diagnosis, use
-> [PORTAL_DIAGNOSIS.md](PORTAL_DIAGNOSIS.md). The file manifest below records the
+> [RENDER_DEPLOYMENT.md](../RENDER_DEPLOYMENT.md). The file manifest below records the
 > earlier implementation, not the current tree.
 
 ## Current status
@@ -44,7 +44,7 @@ are retained as historical work; its public auth/debug/CAPTCHA routes now return
 reports and deployment instructions are superseded by this document.
 
 Next already provides the required Node backend, so adding Express or a second
-service would duplicate it. Railway runs the UI and API in one long-lived process.
+service would duplicate it. Render runs the UI and API in one long-lived process.
 
 ## API
 
@@ -70,7 +70,7 @@ service would duplicate it. Railway runs the UI and API in one long-lived proces
   cryptographic erasure of immutable strings or browser-internal memory.
 - Server memory only; inactivity TTL is configurable between 10 and 15 minutes,
   cleanup runs every 30 seconds. Logout/errors close contexts; process termination
-  attempts cleanup. Restarts lose every session. Eight active/pending contexts max.
+  attempts cleanup. Restarts lose every session. The current default is two active/pending contexts.
 - Strict production HTTPS `FRONTEND_ORIGIN`, exact Origin checks for mutations,
   same-site strict, secure production cookies. The UI and API must share one origin;
   cross-site deployment is intentionally unsupported. No wildcard CORS.
@@ -79,7 +79,7 @@ service would duplicate it. Railway runs the UI and API in one long-lived proces
 - Per-account hashed rate limits and conservative process-wide operation limits.
   Forwarded IP headers are not trusted. Limits are per process and reset on restart.
 - No CAPTCHA solving, stealth evasion, automatic credential retry or third-party
-  credential delivery. Production image runs as `pwuser`; Chromium's Playwright
+  credential delivery. Production image runs as non-root `node`; Chromium's Playwright
   defaults still apply, including its default sandbox setting. Only the official
   portal origin is allowed; this service is not a general-purpose browser proxy.
 
@@ -94,23 +94,11 @@ service would duplicate it. Railway runs the UI and API in one long-lived proces
 Never put SRM credentials in configuration, a command, a fixture, Git or chat.
 The old command-line credential diagnostic is retired.
 
-## Railway deployment
+## Render Free deployment
 
-1. Connect this repository to one Railway service, root directory `/`.
-2. Use the root Dockerfile (also selected in `railway.json`). Image and npm
-   Playwright versions are both pinned to 1.58.2. No secrets enter the build.
-3. Generate a Railway HTTPS domain, then set `FRONTEND_ORIGIN` to its exact origin
-   with no trailing slash. Set `NODE_ENV=production`, `SESSION_TTL_MINUTES=15`.
-   Railway supplies `PORT`; the server binds it on `0.0.0.0`.
-4. Keep **one replica**, no application sleep, and health check `/health`. Allow
-   enough memory for Chromium (start with 1 GiB and measure before increasing
-   the eight-session cap). No volume, database, Redis or credential variables.
-5. Deploy and verify the CAPTCHA flow. This is deployment preparation only:
-   Docker daemon was unavailable locally; neither image execution nor Railway
-   deployment has been verified. Do not announce academic sync until implemented.
-
-References: [Playwright Docker](https://playwright.dev/docs/docker) and
-[Railway Dockerfiles](https://docs.railway.com/builds/dockerfiles).
+The earlier hosting setup is superseded by [RENDER_DEPLOYMENT.md](../RENDER_DEPLOYMENT.md).
+Use one Free Docker service, accept normal sleep, and set MAX_ACTIVE_SESSIONS=2.
+Do not add paid memory, a second service, a database or keep-alive traffic.
 
 ## Verification and remaining work
 
@@ -135,7 +123,7 @@ References: [Playwright Docker](https://playwright.dev/docs/docker) and
 - Four existing date-dependent tests failed at the current date/time. Their
   clocks are now fixed and the attendance assertions check exact output.
 - Real login, invalid credential/CAPTCHA messages, authenticated DOM, normalized
-  profile/attendance, marks, dashboard data and Railway remain unverified.
+  profile/attendance, marks, dashboard data and hosted deployment remained unverified in this initial report.
 - Implement the verified adapter before connecting students. Do not reuse the
   Academia URLs/parsers as if they described the Student Portal. Add small redacted
   fixtures only after actual headings and navigation have been inspected.
@@ -155,7 +143,7 @@ Created:
 - `.env.example`
 - `Dockerfile`
 - `docs/STUDENT_PORTAL.md`
-- `railway.json`
+- `railway.json` (historical; removed for Render)
 - `scripts/check-student-portal.mjs`
 - `src/app/api/srm/login/route.ts`
 - `src/app/health/route.ts`

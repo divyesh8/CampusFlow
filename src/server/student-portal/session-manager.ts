@@ -3,7 +3,8 @@ import type { BrowserContext, Page } from "playwright";
 import type { StudentProfile } from "@/types";
 import type { SrmData } from "@/hooks/use-srm-data";
 import { PortalError } from "./errors";
-import { sessionTtl } from "./config";
+import { sessionTtl, maxActiveSessions } from "./config";
+import { PortalDiagnostics } from "./diagnostics";
 
 export interface PortalSession {
   context: BrowserContext; page: Page; createdAt: number; lastAccessedAt: number;
@@ -12,15 +13,16 @@ export interface PortalSession {
 export class SessionStore {
   readonly sessions = new Map<string, PortalSession>();
   private pending = 0;
-  constructor(private ttl = sessionTtl(), private max = 8, private now = Date.now) {}
-  async create(factory: () => Promise<{ context: BrowserContext; page: Page }>) {
+  constructor(private ttl = sessionTtl(), private max?: number, private now = Date.now) {}
+  async create(factory: () => Promise<{ context: BrowserContext; page: Page }>, diagnostics = new PortalDiagnostics()) {
     await this.cleanup();
-    if (this.sessions.size + this.pending >= this.max) throw new PortalError("CAPACITY_REACHED", 503);
+    if (this.sessions.size + this.pending >= (this.max ?? maxActiveSessions())) throw new PortalError("SERVER_BUSY", 503);
     this.pending++;
     try {
       const resources = await factory();
       const id = randomBytes(32).toString("hex");
       this.sessions.set(id, { ...resources, createdAt: this.now(), lastAccessedAt: this.now(), busy: false, authenticated: false });
+      diagnostics.stage("PORTAL_SESSION_CREATED");
       return id;
     } finally { this.pending--; }
   }
@@ -54,6 +56,7 @@ export class SessionStore {
     if (session) {
       session.profile = undefined; session.data = undefined;
       await session.context.close().catch(() => {});
+      new PortalDiagnostics().stage("PORTAL_SESSION_DESTROYED");
     }
   }
   async cleanup() {

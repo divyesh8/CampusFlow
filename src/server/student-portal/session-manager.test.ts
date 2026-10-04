@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import type { BrowserContext, Page } from "playwright";
 import { SessionStore } from "./session-manager";
+import { maxActiveSessions, sessionTtl } from "./config";
+
+beforeEach(() => { vi.spyOn(console, "info").mockImplementation(() => {}); vi.stubEnv("MAX_ACTIVE_SESSIONS", ""); });
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 function resources() {
   const close = vi.fn().mockResolvedValue(undefined);
@@ -57,8 +61,42 @@ describe("temporary Student Portal sessions", () => {
     let release!: (value: ReturnType<typeof resources>) => void;
     const first = store.create(() => new Promise(resolve => { release = resolve; }));
     await Promise.resolve();
-    await expect(store.create(async () => resources())).rejects.toMatchObject({ code: "CAPACITY_REACHED" });
+    await expect(store.create(async () => resources())).rejects.toMatchObject({ code: "SERVER_BUSY" });
     release(resources()); await first;
     await store.close();
+  });
+  it("defaults to two sessions and ten minutes, releasing slots on failure and logout", async () => {
+    vi.stubEnv("SESSION_TTL_MINUTES", "");
+    expect(sessionTtl()).toBe(600_000);
+    expect(maxActiveSessions()).toBe(2);
+    const store = new SessionStore();
+    await expect(store.create(async () => { throw new Error("failed factory"); })).rejects.toThrow();
+    const first = await store.create(async () => resources());
+    await store.create(async () => resources());
+    const factory = vi.fn(async () => resources());
+    await expect(store.create(factory)).rejects.toMatchObject({ code: "SERVER_BUSY", status: 503 });
+    expect(factory).not.toHaveBeenCalled();
+    await store.destroy(first);
+    await store.create(factory);
+    expect(factory).toHaveBeenCalledOnce();
+    await store.close();
+  });
+  it("honors MAX_ACTIVE_SESSIONS and safely rejects invalid settings", async () => {
+    vi.stubEnv("MAX_ACTIVE_SESSIONS", "1");
+    const store = new SessionStore();
+    await store.create(async () => resources());
+    await expect(store.create(async () => resources())).rejects.toMatchObject({ code: "SERVER_BUSY" });
+    await store.close();
+    for (const value of ["0", "-1", "NaN", "Infinity", "2.5", "999"]) {
+      vi.stubEnv("MAX_ACTIVE_SESSIONS", value);
+      await expect(store.create(async () => resources())).rejects.toMatchObject({ code: "CONFIGURATION_ERROR" });
+    }
+  });
+  it("treats a cookie from before a restart as expired", async () => {
+    const before = new SessionStore();
+    const id = await before.create(async () => resources());
+    await before.close();
+    const after = new SessionStore();
+    await expect(after.get(id)).rejects.toMatchObject({ code: "SESSION_EXPIRED", status: 401 });
   });
 });

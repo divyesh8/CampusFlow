@@ -23,8 +23,8 @@ export default function LoginPage() {
   async function loadCaptcha() {
     setStatus("loading"); setError(""); setPassword(""); setCaptcha(""); setChallenge(null);
     try {
-      const response = await fetch("/api/srm/session", { method: "POST", signal: AbortSignal.timeout(60_000) });
-      const data = await response.json();
+      const response = await fetch("/api/srm/session", { method: "POST", signal: AbortSignal.timeout(120_000) });
+      const data = await response.json().catch(() => { throw new Error("CampusFlow is still starting. Please try loading the CAPTCHA again shortly."); });
       if (!response.ok) throw new Error(data.error || "Could not load SRM Student Portal.");
       setChallenge(data); setStatus("ready");
     } catch (reason) {
@@ -70,7 +70,9 @@ export default function LoginPage() {
           {status === "loading" ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading SRM Portal…</> : challenge ? "Load a new CAPTCHA" : "Load SRM CAPTCHA"}
         </Button>
         {error && <p role="alert" className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
-        <p aria-live="polite" className="text-xs text-muted-foreground">{status === "ready" ? "CAPTCHA ready. Sessions expire after 15 minutes of inactivity." : ""}</p>
+        <p aria-live="polite" className="text-xs text-muted-foreground">{status === "loading" || loading
+          ? "CampusFlow is starting the secure SRM connector. After a period of inactivity, this may take about a minute."
+          : status === "ready" ? "CAPTCHA ready. Sessions expire after inactivity or a service restart. Load a fresh CAPTCHA if needed." : ""}</p>
       </CardContent></Card>
       <p className="text-center text-[10px] text-muted-foreground leading-relaxed">CampusFlow is an independent, unofficial student project, not affiliated with or endorsed by SRMIST.</p>
     </div>

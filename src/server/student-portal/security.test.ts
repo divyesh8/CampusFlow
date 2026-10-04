@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { checkOrigin, failure, loginSchema, rateLimit, readJson } from "./security";
-import { frontendOrigin, deploymentStatus } from "./config";
+import { frontendOrigin } from "./config";
 
 afterEach(() => vi.unstubAllEnvs());
 describe("Student Portal request security", () => {
@@ -11,13 +11,11 @@ describe("Student Portal request security", () => {
     const response = failure(error);
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ code: "CONFIGURATION_ERROR", error: "CampusFlow's connection service is not configured." });
-    expect(deploymentStatus().configuration).toBe("invalid");
   });
   it("accepts production HTTPS origin with harmless trailing slash and ignores legacy env", () => {
     vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("FRONTEND_ORIGIN", " https://example.test/ ");
     vi.stubEnv("SRM_SESSION_KEY", ""); vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
     expect(frontendOrigin()).toBe("https://example.test");
-    expect(deploymentStatus().configuration).toBe("ready");
   });
   it("requires the exact configured origin and HTTPS configuration in production", () => {
     vi.stubEnv("FRONTEND_ORIGIN", "https://campus.example");
@@ -46,6 +44,6 @@ describe("Student Portal request security", () => {
     const response = failure(otherBundleError);
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ code: "SESSION_EXPIRED", error: "Your SRM session expired. Connect again." });
-    expect(failure({ code: "SESSION_EXPIRED", status: 401 }).status).toBe(502);
+    expect(failure({ code: "SESSION_EXPIRED", status: 401 }).status).toBe(500);
   });
 });

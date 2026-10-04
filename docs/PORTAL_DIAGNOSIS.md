@@ -1,5 +1,8 @@
 # Student Portal login/deployment diagnosis — 2026-10-04
 
+> Historical diagnosis. Current hosting configuration and verification are in
+> [RENDER_DEPLOYMENT.md](../RENDER_DEPLOYMENT.md).
+
 ## What was reproduced
 
 The supplied production URL was https://campusflow-psi.vercel.app/login.
@@ -95,36 +98,14 @@ login-form rejection is LOGIN_FAILED, not a fabricated credential diagnosis.
 
 ## Hosting configuration
 
-The supplied live hostname is on Vercel. This repository's intended runtime is
-one long-lived Railway Docker service containing BOTH UI and API. The in-memory
-BrowserContexts cannot reliably span stateless function instances. Merely setting
-an origin on Vercel does not install the Railway Docker runtime or establish this
-session topology. No provider migration or remote configuration was performed.
-
-On the intended Railway service set:
-
-```dotenv
-NODE_ENV=production
-FRONTEND_ORIGIN=https://<actual-public-campusflow-origin>
-SESSION_TTL_MINUTES=15
-```
-
-Use the origin that serves the UI and API, not the SRM origin and not a login-page
-URL. Railway supplies PORT. No actual hostname is hardcoded in application source.
-The Docker command binds 0.0.0.0 on PORT. Railway config selects one replica and
-/health; leave application sleep disabled. Playwright package and both Docker
-stages are pinned to 1.58.2. Browser contexts have no persistent volume.
-
-For the currently supplied hostname, its matching origin would be
-`https://campusflow-psi.vercel.app`; this explains origin matching, not a claim
-that Vercel's runtime supports this architecture. Configure the actual intended
-service and redeploy it, then test its URL.
+The current target is one Render Free Docker service serving UI and API.
+See [RENDER_DEPLOYMENT.md](../RENDER_DEPLOYMENT.md) for environment settings,
+cold starts and the exact deployment steps. Earlier hosting instructions are superseded.
 
 ## Manual checks
 
 1. Configure the intended service and deploy these changes. Open /health: expect
-   connector=student-portal-v1 and configuration=ready. Liveness remains 200 when
-   configuration is invalid so Railway does not repeatedly restart the service.
+   status=ok and service=campusflow. It checks liveness only, not configuration.
 2. Open /login on that same HTTPS origin and load one CAPTCHA. Confirm the official
    image is visible. Enter your account details privately and manually answer the
    CAPTCHA, then submit once.
@@ -152,7 +133,7 @@ CAPTCHA/session smoke check passed locally. The smoke check exposed the
 cross-bundle SESSION_EXPIRED classification bug, which was fixed and covered by
 a regression test; the full smoke check then passed. No real student credentials
 were used. The Docker engine is unavailable locally, so the Docker build/runtime
-check and Railway deployment remain unexecuted. Authenticated scraping is
+check and hosted deployment remained unexecuted at the time of that diagnosis. Authenticated scraping is
 intentionally unfinished.
 
 

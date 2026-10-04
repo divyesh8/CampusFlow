@@ -3,7 +3,8 @@ import { messages, PortalError, isPortalError, type ErrorCode } from "./errors";
 
 type Stage = "PORTAL_REQUEST_START" | "PORTAL_BROWSER_START" | "PORTAL_BROWSER_READY" | "PORTAL_CHALLENGE_START" | "PORTAL_PAGE_LOADED" |
   "PORTAL_CAPTCHA_READY" | "PORTAL_LOGIN_START" | "PORTAL_LOGIN_SUBMITTED" |
-  "PORTAL_LOGIN_REDIRECT" | "PORTAL_AUTHENTICATED" | "PORTAL_SYNC_UNIMPLEMENTED" | "PORTAL_REQUEST_FAILED";
+  "PORTAL_LOGIN_REDIRECT" | "PORTAL_AUTHENTICATED" | "PORTAL_SYNC_UNIMPLEMENTED" | "PORTAL_REQUEST_FAILED" |
+  "PORTAL_SESSION_CREATED" | "PORTAL_SESSION_DESTROYED";
 
 export class PortalDiagnostics {
   readonly requestId = randomUUID();
@@ -18,7 +19,7 @@ export class PortalDiagnostics {
     }));
   }
   failure(error: unknown) {
-    const safe = isPortalError(error) ? error : new PortalError("PORTAL_UNAVAILABLE");
+    const safe = isPortalError(error) ? error : new PortalError("INTERNAL_ERROR", 500);
     this.stage("PORTAL_REQUEST_FAILED", safe.status, safe.code);
   }
 }

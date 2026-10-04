@@ -23,20 +23,24 @@ export function loginRejection(message: string) {
 
 export async function createChallenge(diagnostics = new PortalDiagnostics()) {
   diagnostics.stage("PORTAL_CHALLENGE_START");
-  const id = await sessions.create(() => createContext(diagnostics));
+  const id = await sessions.create(() => createContext(diagnostics), diagnostics);
   try {
     return await sessions.run(id, async ({ page }) => {
-      const response = await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
+      const response = await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" })
+        .catch(() => { throw new PortalError("PORTAL_UNAVAILABLE"); });
       diagnostics.stage("PORTAL_PAGE_LOADED", response?.status());
       if (!response?.ok() || !isPortalUrl(page.url())) throw new PortalError("PORTAL_UNAVAILABLE");
-      await page.locator(selectors.form).waitFor({ state: "visible" });
-      await page.waitForFunction(selector => {
-        const image = document.querySelector<HTMLImageElement>(selector);
-        return !!image?.complete && image.naturalWidth > 0;
-      }, selectors.captchaImage, { timeout: 15_000 });
-      const bytes = await page.locator(selectors.captchaImage).screenshot({ type: "png" });
-      diagnostics.stage("PORTAL_CAPTCHA_READY");
-      return { sessionId: id, captcha: `data:image/png;base64,${bytes.toString("base64")}` };
+      await page.locator(selectors.form).waitFor({ state: "visible" })
+        .catch(() => { throw new PortalError("PORTAL_CHANGED"); });
+      try {
+        await page.waitForFunction(selector => {
+          const image = document.querySelector<HTMLImageElement>(selector);
+          return !!image?.complete && image.naturalWidth > 0;
+        }, selectors.captchaImage, { timeout: 15_000 });
+        const bytes = await page.locator(selectors.captchaImage).screenshot({ type: "png" });
+        diagnostics.stage("PORTAL_CAPTCHA_READY");
+        return { sessionId: id, captcha: `data:image/png;base64,${bytes.toString("base64")}` };
+      } catch { throw new PortalError("CAPTCHA_LOAD_FAILED"); }
     });
   } catch (error) { await sessions.destroy(id); throw error; }
 }

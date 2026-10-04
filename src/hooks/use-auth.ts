@@ -21,7 +21,7 @@ export function useAuthProvider(): AuthContextType {
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/srm/session", { cache: "no-store" });
+      const response = await fetch("/api/srm/session", { cache: "no-store", signal: AbortSignal.timeout(120_000) });
       if (!response.ok) {
         if (response.status === 401) { setUser(null); setLastSyncAt(null); }
         return;
@@ -49,7 +49,10 @@ export function useAuthProvider(): AuthContextType {
       input.password = ""; input.captcha = "";
       const response = await pending;
       const data = await response.json();
-      if (!response.ok) return { error: data.error || "Could not connect to SRM." };
+      if (!response.ok) {
+        if (data.code === "SESSION_EXPIRED") { setUser(null); setLastSyncAt(null); }
+        return { error: data.error || "Could not connect to SRM." };
+      }
       setUser(data.profile); setLastSyncAt(data.lastSyncAt || null);
       return {};
     } catch { return { error: "Could not reach SRM. Load a new CAPTCHA and try again." }; }

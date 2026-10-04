@@ -8,8 +8,13 @@ export const selectors = {
   captchaInput: "#captcha", captchaImage: "#secure_captcha", submit: "#btnLogin",
 };
 export function sessionTtl() {
-  const minutes = Number(process.env.SESSION_TTL_MINUTES || 15);
-  return (Number.isFinite(minutes) ? Math.min(15, Math.max(10, minutes)) : 15) * 60_000;
+  const minutes = Number(process.env.SESSION_TTL_MINUTES || 10);
+  return (Number.isFinite(minutes) ? Math.min(15, Math.max(10, minutes)) : 10) * 60_000;
+}
+export function maxActiveSessions() {
+  const maximum = Number(process.env.MAX_ACTIVE_SESSIONS || 2);
+  if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 8) throw new PortalError("CONFIGURATION_ERROR", 503);
+  return maximum;
 }
 export function isPortalUrl(value: string) {
   try { return new URL(value).origin === PORTAL_ORIGIN; } catch { return false; }
@@ -24,12 +29,4 @@ export function frontendOrigin() {
         (process.env.NODE_ENV === "production" && url.protocol !== "https:")) throw new Error();
     return url.origin; // Normalize a harmless root trailing slash/default port.
   } catch { throw new PortalError("CONFIGURATION_ERROR", 503); }
-}
-
-export function deploymentStatus() {
-  let configuration: "ready" | "invalid" = "ready";
-  try { frontendOrigin(); } catch { configuration = "invalid"; }
-  const revision = process.env.RAILWAY_GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA;
-  return { connector: "student-portal-v1", configuration,
-    ...(/^[a-f0-9]{40}$/i.test(revision || "") ? { revision } : {}) };
 }

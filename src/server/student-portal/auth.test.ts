@@ -42,7 +42,7 @@ describe("Student Portal authentication boundaries (synthetic browser, no real l
     const failed = fakePortal();
     vi.spyOn(failed.page, "goto").mockRejectedValue(new Error("unavailable"));
     vi.mocked(createContext).mockResolvedValue(failed);
-    await expect(createChallenge()).rejects.toThrow("unavailable");
+    await expect(createChallenge()).rejects.toMatchObject({ code: "PORTAL_UNAVAILABLE" });
     expect(failed.close).toHaveBeenCalledOnce();
   });
   it("uses the challenge context and fails closed at the unverified academic adapter", async () => {
@@ -55,6 +55,15 @@ describe("Student Portal authentication boundaries (synthetic browser, no real l
     expect(portal.close).toHaveBeenCalledOnce();
     expect(sessions.sessions.has(id)).toBe(false);
     expect(createContext).not.toHaveBeenCalled();
+  });
+  it("classifies CAPTCHA image failure and releases its context", async () => {
+    const portal = fakePortal();
+    portal.screenshot.mockRejectedValue(new Error("private browser details"));
+    vi.mocked(createContext).mockResolvedValue(portal);
+    await expect(createChallenge()).rejects.toMatchObject({ code: "CAPTCHA_LOAD_FAILED" });
+    expect(portal.close).toHaveBeenCalledOnce();
+    expect(sessions.sessions.size).toBe(0);
+    expect(JSON.stringify(vi.mocked(console.info).mock.calls)).not.toContain("private browser details");
   });
   it("does not destroy an in-progress login when a second request arrives", async () => {
     const portal = fakePortal();

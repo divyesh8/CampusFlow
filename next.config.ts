@@ -32,7 +32,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Chromium runs in the long-lived Railway Node process, outside the bundle.
+  // Chromium runs in the long-lived Render Node process, outside the bundle.
   serverExternalPackages: ["playwright", "playwright-core"],
   async headers() {
     return [

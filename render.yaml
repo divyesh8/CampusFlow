@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: campusflow
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: SESSION_TTL_MINUTES
+        value: "10"
+      - key: MAX_ACTIVE_SESSIONS
+        value: "2"
+      - key: NEXT_PUBLIC_APP_NAME
+        value: CampusFlow
