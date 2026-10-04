@@ -1,22 +1,25 @@
 import { createChallenge } from "@/server/student-portal/auth";
+import { PortalDiagnostics } from "@/server/student-portal/diagnostics";
 import { sessions } from "@/server/student-portal/session-manager";
 import { checkOrigin, clearCookie, cookieId, cors, failure, guard, json, setCookie } from "@/server/student-portal/security";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
+  const diagnostics = new PortalDiagnostics();
+  diagnostics.stage("PORTAL_REQUEST_START");
   let created: string | undefined;
   try {
     guard(request, "create");
     const old = await cookieId().catch(() => undefined);
     if (old) await sessions.destroy(old);
     await clearCookie();
-    const challenge = await createChallenge();
+    const challenge = await createChallenge(diagnostics);
     created = challenge.sessionId;
     await setCookie(created);
-    return json(challenge);
+    return json(challenge, 200, diagnostics);
   } catch (error) {
     if (created) await sessions.destroy(created);
-    return failure(error);
+    return failure(error, diagnostics);
   }
 }
 export async function GET() {

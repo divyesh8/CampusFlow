@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { PortalError, messages } from "./errors";
-import { sessionTtl } from "./config";
+import { PortalError, messages, isPortalError } from "./errors";
+import { sessionTtl, frontendOrigin } from "./config";
+import type { PortalDiagnostics } from "./diagnostics";
 
 export const COOKIE = "cf_portal_session";
 export const sessionIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -14,14 +15,6 @@ export const loginSchema = z.object({
   captcha: z.string().trim().min(1).max(8).regex(/^[a-zA-Z0-9]+$/),
 }).strict();
 
-function frontendOrigin() {
-  try {
-    const configured = process.env.FRONTEND_ORIGIN || (process.env.NODE_ENV !== "production" ? "http://localhost:3000" : "");
-    const url = new URL(configured);
-    if (url.origin !== configured || (process.env.NODE_ENV === "production" && url.protocol !== "https:")) throw new Error();
-    return url.origin;
-  } catch { throw new PortalError("CONFIGURATION_ERROR", 503); }
-}
 export function checkOrigin(request: Request) {
   if (request.headers.get("origin") !== frontendOrigin()) throw new PortalError("ORIGIN_REJECTED", 403);
 }
@@ -33,13 +26,15 @@ export function cors(request: Request) {
     "Access-Control-Allow-Headers": "Content-Type", "Vary": "Origin", "Cache-Control": "no-store",
   } });
 }
-export function json(value: unknown, status = 200) {
+export function json(value: unknown, status = 200, diagnostics?: PortalDiagnostics) {
   // Frontend and backend are deployed on the same origin. No wildcard CORS.
-  return NextResponse.json(value, { status, headers: { "Cache-Control": "no-store, private", "Pragma": "no-cache" } });
+  return NextResponse.json(value, { status, headers: { "Cache-Control": "no-store, private", "Pragma": "no-cache",
+    "X-CampusFlow-Connector": "student-portal-v1", ...(diagnostics ? { "X-Request-ID": diagnostics.requestId } : {}) } });
 }
-export function failure(error: unknown) {
-  const known = error instanceof PortalError ? error : new PortalError("PORTAL_UNAVAILABLE");
-  const response = json({ code: known.code, error: messages[known.code] }, known.status);
+export function failure(error: unknown, diagnostics?: PortalDiagnostics) {
+  const known = isPortalError(error) ? error : new PortalError("PORTAL_UNAVAILABLE");
+  diagnostics?.failure(known);
+  const response = json({ code: known.code, error: messages[known.code], ...(diagnostics ? { requestId: diagnostics.requestId } : {}) }, known.status, diagnostics);
   if (known.status === 429) response.headers.set("Retry-After", "300");
   return response;
 }
@@ -62,7 +57,7 @@ export async function readJson<T>(request: Request, schema: z.ZodType<T>): Promi
     if (!result.success) throw new PortalError("INVALID_REQUEST", 400);
     return result.data;
   } catch (error) {
-    if (error instanceof PortalError) throw error;
+    if (isPortalError(error)) throw error;
     throw new PortalError("INVALID_REQUEST", 400);
   } finally {
     for (const chunk of chunks) chunk.fill(0);

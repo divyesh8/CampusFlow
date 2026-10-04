@@ -1,5 +1,10 @@
 # Student Portal connector — 2026-10-04
 
+> Historical first-pass implementation report. For the current configuration,
+> removed legacy authentication code and deployment diagnosis, use
+> [PORTAL_DIAGNOSIS.md](PORTAL_DIAGNOSIS.md). The file manifest below records the
+> earlier implementation, not the current tree.
+
 ## Current status
 
 **Partial implementation; not a verified end-to-end integration.** Real CAPTCHA

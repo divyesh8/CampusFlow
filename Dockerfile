@@ -16,6 +16,9 @@ COPY --from=build --chown=pwuser:pwuser /app/.next ./.next
 COPY --from=build --chown=pwuser:pwuser /app/public ./public
 COPY --from=build --chown=pwuser:pwuser /app/next.config.ts ./next.config.ts
 USER pwuser
+# Build-time smoke check of the actual non-root runtime, including system libs.
+# Fails the image build if the pinned Chromium executable cannot launch.
+RUN node -e "const {chromium}=require('playwright'); chromium.launch({headless:true}).then(b=>b.close()).catch(()=>{console.error('Chromium runtime check failed');process.exit(1)})"
 EXPOSE 3000
 # Next start uses process.env.PORT; Railway supplies it. Shell exec forwards signals.
 CMD ["sh", "-c", "exec node node_modules/next/dist/bin/next start --hostname 0.0.0.0 --port ${PORT:-3000}"]

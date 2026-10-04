@@ -1,14 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BrowserContext, Page } from "playwright";
-import { createChallenge, login } from "./auth";
+import { createChallenge, login, loginRejection } from "./auth";
 import { createContext } from "./browser";
 import { sessions } from "./session-manager";
 import { LOGIN_URL, selectors } from "./config";
 
 vi.mock("./browser", () => ({ createContext: vi.fn() }));
-afterEach(async () => { await sessions.close(); vi.clearAllMocks(); });
+beforeEach(() => { vi.spyOn(console, "info").mockImplementation(() => {}); });
+afterEach(async () => { await sessions.close(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 
-function fakePortal() {
+function fakePortal(returnLoginForm = false) {
   let visible = true;
   const fill = vi.fn().mockResolvedValue(undefined);
   const screenshot = vi.fn().mockResolvedValue(Buffer.from("synthetic-image"));
@@ -17,13 +18,14 @@ function fakePortal() {
     waitFor: vi.fn().mockResolvedValue(undefined),
     isVisible: async () => visible,
     evaluate: async () => true,
-    click: async () => { expect(selector).toBe(selectors.submit); visible = false; },
+    innerText: async () => "Incorrect CAPTCHA",
+    click: async () => { expect(selector).toBe(selectors.submit); visible = returnLoginForm; },
   }));
   const page = {
-    locator, goto: async () => ({ ok: () => true }), url: () => LOGIN_URL,
+    locator, goto: async () => ({ ok: () => true, status: () => 200 }), url: () => LOGIN_URL,
     waitForFunction: vi.fn().mockResolvedValue(undefined),
     waitForResponse: async () => ({ status: () => 302 }),
-    waitForURL: async () => {}, waitForLoadState: async () => {}, on: vi.fn(), off: vi.fn(),
+    waitForEvent: vi.fn().mockResolvedValue({}), mainFrame: vi.fn(), waitForLoadState: async () => {}, on: vi.fn(), off: vi.fn(),
   };
   const close = vi.fn().mockResolvedValue(undefined);
   return { context: { close } as unknown as BrowserContext, page: page as unknown as Page, close, locator, fill, screenshot };
@@ -62,5 +64,28 @@ describe("Student Portal authentication boundaries (synthetic browser, no real l
     await expect(login(input)).rejects.toMatchObject({ code: "SESSION_BUSY" });
     expect(portal.close).not.toHaveBeenCalled();
     expect(input.password).toBe("");
+  });
+  it("keeps transport failure separate from invalid credentials", async () => {
+    const portal = fakePortal();
+    vi.spyOn(portal.page, "waitForResponse").mockRejectedValue(new Error("private network details"));
+    const id = await sessions.create(async () => portal);
+    await expect(login({ sessionId: id, netId: "test01", password: "synthetic-only", captcha: "dummy" }))
+      .rejects.toMatchObject({ code: "PORTAL_UNAVAILABLE" });
+    expect(portal.close).toHaveBeenCalledOnce();
+  });
+  it("recognizes a returned login form even when navigation keeps the same URL", async () => {
+    const portal = fakePortal(true);
+    const id = await sessions.create(async () => portal);
+    await expect(login({ sessionId: id, netId: "test01", password: "synthetic-only", captcha: "dummy" }))
+      .rejects.toMatchObject({ code: "INVALID_CAPTCHA" });
+  });
+  it.each([
+    ["Invalid captcha", "INVALID_CAPTCHA"], ["CAPTCHA has expired", "INVALID_CAPTCHA"],
+    ["Incorrect NetID or password", "INVALID_CREDENTIALS"],
+    ["Incorrect NetID, password or CAPTCHA", "LOGIN_FAILED"],
+    ["NetID\nPassword\nCAPTCHA\nInvalid CAPTCHA", "INVALID_CAPTCHA"],
+    ["Password", "LOGIN_FAILED"], ["Please wait", "LOGIN_FAILED"],
+  ])("classifies rejection text without echoing it", (message, code) => {
+    expect(loginRejection(message)).toBe(code);
   });
 });

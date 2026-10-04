@@ -1,6 +1,6 @@
 import { sessions } from "@/server/student-portal/session-manager";
 import { syncAcademicData } from "@/server/student-portal/scraper";
-import { PortalError } from "@/server/student-portal/errors";
+import { PortalError, isPortalError } from "@/server/student-portal/errors";
 import { cookieId, failure, guard, json, rateLimit, setCookie } from "@/server/student-portal/security";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     await setCookie(id);
     return json(result);
   } catch (error) {
-    if (id && !(error instanceof PortalError && ["RATE_LIMITED", "SESSION_BUSY"].includes(error.code))) await sessions.destroy(id);
+    if (id && !(isPortalError(error) && ["RATE_LIMITED", "SESSION_BUSY"].includes(error.code))) await sessions.destroy(id);
     return failure(error);
   }
 }
