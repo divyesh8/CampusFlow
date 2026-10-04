@@ -15,11 +15,18 @@ export function useSrmData() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    fetch("/api/srm/data", { cache: "no-store" }).then(async (response) => {
+    let active = true;
+    const refresh = () => { void fetch("/api/srm/data", { cache: "no-store" }).then(async (response) => {
       const body = await response.json();
+      if (response.status === 401) window.dispatchEvent(new Event("srm-session-expired"));
       if (!response.ok) throw new Error(body.error || "Academic data is unavailable.");
       return body as SrmData;
-    }).then(setData).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Academic data is unavailable.")).finally(() => setLoading(false));
+    }).then(value => { if (active) { setData(value); setError(null); } }).catch((reason: unknown) => {
+      if (active) { setData(null); setError(reason instanceof Error ? reason.message : "Academic data is unavailable."); }
+    }).finally(() => { if (active) setLoading(false); }); };
+    refresh();
+    window.addEventListener("srm-data-updated", refresh);
+    return () => { active = false; window.removeEventListener("srm-data-updated", refresh); };
   }, []);
   return { data, loading, error };
 }

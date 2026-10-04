@@ -2,6 +2,15 @@
 
 **Your SRM academics, simplified.**
 
+> **Current connector status (2026-10-04): partial.** CampusFlow now loads the real
+> CAPTCHA from the official SRM Student Portal using temporary Chromium sessions.
+> Real login and authenticated profile/attendance extraction require manual
+> verification and are not implemented end-to-end yet. The adapter fails closed.
+> See [Student Portal setup, verification and Railway deployment](docs/STUDENT_PORTAL.md)
+> for current instructions. The Academia/Supabase integration described below is
+> historical; its public authentication endpoints have been retired. Do not use
+> older command-line credential instructions.
+
 CampusFlow is a mobile-first academic dashboard for SRM Institute of Science and Technology students. It consolidates attendance, marks, timetable, exams, assignments, campus events, and mess menus into a single fast interface. The platform is designed to work with a pluggable university provider system and currently targets SRM Academia.
 
 ## Features

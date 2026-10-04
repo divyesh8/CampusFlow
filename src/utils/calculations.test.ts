@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   calculateAttendancePercentage,
   calculateAttendanceStatus,
@@ -283,6 +283,8 @@ describe("formatTime", () => {
 });
 
 describe("daysUntil", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 8, 3, 12)); });
+  afterEach(() => vi.useRealTimers());
   it("returns positive for future dates", () => {
     const future = new Date();
     future.setDate(future.getDate() + 5);
@@ -302,6 +304,8 @@ describe("daysUntil", () => {
 });
 
 describe("getAttendanceTrend", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 8, 3, 12)); });
+  afterEach(() => vi.useRealTimers());
   it("filters records within date range", () => {
     const records = [
       { date: "2026-09-01", attended: 5, conducted: 5 },
@@ -309,7 +313,7 @@ describe("getAttendanceTrend", () => {
       { date: "2026-07-01", attended: 3, conducted: 5 },
     ];
     const result = getAttendanceTrend(records, 30);
-    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.map(row => row.date)).toEqual(["2026-09-01"]);
   });
 
   it("sorts by date ascending", () => {
@@ -318,11 +322,7 @@ describe("getAttendanceTrend", () => {
       { date: "2026-09-01", attended: 4, conducted: 5 },
     ];
     const result = getAttendanceTrend(records, 7);
-    if (result.length >= 2) {
-      expect(new Date(result[0].date).getTime()).toBeLessThanOrEqual(
-        new Date(result[1].date).getTime()
-      );
-    }
+    expect(result.map(row => row.date)).toEqual(["2026-09-01", "2026-09-02"]);
   });
 });
 

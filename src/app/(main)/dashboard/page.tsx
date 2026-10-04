@@ -45,7 +45,7 @@ function formatSyncTime(lastSyncAt: string | null): string | null {
 
 export default function DashboardPage() {
   const { user, lastSyncAt } = useAuth();
-  const { data } = useSrmData();
+  const { data, error } = useSrmData();
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle");
   const [, setTick] = useState(0);
 
@@ -183,12 +183,12 @@ export default function DashboardPage() {
         <Card className="border-border h-full">
           <CardContent className="p-3">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] text-muted-foreground font-medium uppercase">Classes Today</span>
+                <span className="text-[10px] text-muted-foreground font-medium uppercase">Courses</span>
               <BookOpen className="h-3 w-3 text-muted-foreground" />
             </div>
               <p className="text-xl font-bold">{data ? data.subjects.length : "—"}</p>
             <p className="text-[10px] text-muted-foreground mt-0.5">
-              {user?.onboarded ? "From timetable" : "Connect SRM to view"}
+              {user?.onboarded ? "From SRM" : "Connect SRM to view"}
             </p>
           </CardContent>
         </Card>
@@ -210,6 +210,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Sync */}
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {user?.onboarded && (
         <Card className="border-border">
           <CardContent className="p-4 text-center">

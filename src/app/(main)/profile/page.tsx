@@ -120,7 +120,7 @@ export default function ProfilePage() {
                 <AlertCircle className="h-4 w-4 text-amber-600" />
               )}
               <div>
-                <p className="text-sm font-medium">SRM Academia</p>
+                <p className="text-sm font-medium">SRM Student Portal</p>
                 <p className="text-[10px] text-muted-foreground">
                   {user?.onboarded ? "Connected & verified" : "Pending setup"}
                 </p>
